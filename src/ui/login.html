@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CJ Dropshipping Login</title>
+  <style>
+    /**
+     * @description CJ Dropshipping MCP Apps 登录页面
+     * @note 品牌色参考 mf-components CjHeader: --color-primary: #FF7700
+     * @note MCP Apps 窗口通常较小(约 300-400px 宽)，需紧凑布局
+     * @note 通信方式: window.parent.postMessage (JSON-RPC 2.0)，非 window.__MCP_CALL__
+     */
+    :root {
+      --cj-primary: #FF7700;
+      --cj-primary-hover: #E56A00;
+      --cj-primary-light: #FFF1E5;
+      --cj-text: #333333;
+      --cj-text-secondary: #666666;
+      --cj-border: #E0E0E0;
+      --cj-bg: #F5F5F5;
+      --cj-error: #FF4D4F;
+      --cj-success: #52C41A;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--cj-bg);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .login-container {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 360px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    }
+    .login-header {
+      background: var(--cj-primary);
+      padding: 20px 24px;
+      text-align: center;
+    }
+    .login-header .logo-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .login-header .logo-icon {
+      width: 28px;
+      height: 28px;
+      background: #fff;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 14px;
+      color: var(--cj-primary);
+      flex-shrink: 0;
+    }
+    .login-header h1 {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .login-header p {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .login-form {
+      padding: 24px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--cj-text);
+      margin-bottom: 6px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid var(--cj-border);
+      border-radius: 6px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+      color: var(--cj-text);
+      background: #fff;
+    }
+    .form-group input:focus {
+      border-color: var(--cj-primary);
+      box-shadow: 0 0 0 2px var(--cj-primary-light);
+    }
+    .form-group input::placeholder {
+      color: #BFBFBF;
+    }
+    .btn-login {
+      width: 100%;
+      padding: 10px 16px;
+      background: var(--cj-primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      margin-top: 4px;
+    }
+    .btn-login:hover {
+      background: var(--cj-primary-hover);
+    }
+    .btn-login:active {
+      transform: scale(0.98);
+    }
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .message {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+      word-break: break-word;
+    }
+    .message.error {
+      display: block;
+      background: #FFF2F0;
+      color: var(--cj-error);
+      border: 1px solid #FFCCC7;
+    }
+    .message.success {
+      display: block;
+      background: #F6FFED;
+      color: var(--cj-success);
+      border: 1px solid #B7EB8F;
+    }
+    .message.info {
+      display: block;
+      background: var(--cj-primary-light);
+      color: var(--cj-primary-hover);
+      border: 1px solid #FFD8B5;
+    }
+    .footer {
+      text-align: center;
+      padding: 0 24px 16px;
+      font-size: 11px;
+      color: #BFBFBF;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <div class="logo-row">
+        <div class="logo-icon">CJ</div>
+        <h1>CJ Dropshipping</h1>
+      </div>
+      <p>MCP Apps Login / MCP应用登录</p>
+    </div>
+    <form class="login-form" id="loginForm">
+      <div class="form-group">
+        <!--
+          @note 纠正: 支持邮箱或用户名登录，后端接口字段为 loginName
+          input type 改为 text 以允许非邮箱格式的用户名输入
+        -->
+        <label for="loginName">Email / Username &nbsp;<span style="color:#BFBFBF;font-weight:400">邮箱 / 用户名</span></label>
+        <input type="text" id="loginName" placeholder="Email or Username / 邮箱或用户名" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">Password / 密码</label>
+        <input type="password" id="password" placeholder="Enter password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">Sign In / 登录</button>
+      <div id="message" class="message"></div>
+    </form>
+    <div class="footer">Powered by CJ Dropshipping MCP</div>
+  </div>
+
+  <script>
+    /**
+     * @description MCP Apps 登录页通信逻辑
+     * @note 纠正: 不能使用 window.__MCP_CALL__，MCP Apps 使用 window.parent.postMessage (JSON-RPC 2.0)
+     * 参考 /Users/zhaojuchang/Documents/临时替换文件/mcp测试/src/ui/login.html 的实现模式:
+     * 1. 页面加载时发送 ui/initialize 握手
+     * 2. 表单提交通过 tools/call 调用 verify_credentials
+     * 3. 结果通过 notifications/tools/call/result 接收
+     */
+    (function() {
+      const APP_ID = 'cj-login-' + Math.random().toString(36).substr(2, 9);
+      let initialized = false;
+
+      function postMsg(msg) {
+        window.parent.postMessage(msg, '*');
+      }
+
+      /** 发送 JSON-RPC request (带 id，期望回复) */
+      function sendRequest(method, params) {
+        postMsg({ jsonrpc: '2.0', id: Date.now(), method: method, params: params || {} });
+      }
+
+      /** 发送 JSON-RPC notification (无 id) */
+      function sendNotification(method, params) {
+        postMsg({ jsonrpc: '2.0', method: method, params: params || {} });
+      }
+
+      /** 调用 MCP Tool，返回 Promise */
+      function callTool(name, args) {
+        return new Promise(function(resolve, reject) {
+          var requestId = Date.now();
+
+          var handleMessage = function(event) {
+            try {
+              var msg = event.data;
+              if (msg.id === requestId && msg.result) {
+                window.removeEventListener('message', handleMessage);
+                resolve(msg.result);
+              } else if (msg.id === requestId && msg.error) {
+                window.removeEventListener('message', handleMessage);
+                reject(new Error(msg.error.message || 'Tool call failed'));
+              }
+            } catch (e) { /* ignore */ }
+          };
+
+          window.addEventListener('message', handleMessage);
+
+          // 30s 超时
+          setTimeout(function() {
+            window.removeEventListener('message', handleMessage);
+            reject(new Error('Tool call timeout (30s)'));
+          }, 30000);
+
+          postMsg({
+            jsonrpc: '2.0',
+            id: requestId,
+            method: 'tools/call',
+            params: { name: name, arguments: args }
+          });
+        });
+      }
+
+      // 监听来自 MCP Host 的消息
+      window.addEventListener('message', function(event) {
+        try {
+          var msg = event.data;
+          if (!msg || msg.jsonrpc !== '2.0') return;
+
+          // 初始化握手响应
+          if (msg.method === 'ui/initialize') {
+            initialized = true;
+            sendNotification('ui/initialized', {
+              appId: APP_ID,
+              protocolVersion: '2026-01-26'
+            });
+          }
+
+          // Tool 调用结果通知
+          if (msg.method === 'notifications/tools/call/result') {
+            var toolName = msg.params && msg.params.name;
+            var result = msg.params && msg.params.result;
+
+            if (toolName === 'verify_credentials') {
+              var resultDiv = document.getElementById('message');
+              var loginBtn = document.getElementById('loginBtn');
+
+              if (result && result.content && result.content[0]) {
+                var text = result.content[0].text;
+                if (text.indexOf('successful') !== -1 || text.indexOf('成功') !== -1) {
+                  resultDiv.className = 'message success';
+                  resultDiv.textContent = text;
+                } else {
+                  resultDiv.className = 'message error';
+                  resultDiv.textContent = text;
+                }
+              }
+              loginBtn.disabled = false;
+              loginBtn.textContent = 'Sign In / 登录';
+            }
+          }
+        } catch (e) {
+          console.error('MCP message handling error:', e);
+        }
+      });
+
+      // 页面加载时发起握手
+      sendRequest('ui/initialize', {
+        appId: APP_ID,
+        appName: 'CJ Login',
+        capabilities: { tools: true, resources: true }
+      });
+
+      // 表单提交
+      var form = document.getElementById('loginForm');
+      var loginBtn = document.getElementById('loginBtn');
+      var msg = document.getElementById('message');
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var loginName = document.getElementById('loginName').value.trim();
+        var password = document.getElementById('password').value;
+
+        if (!loginName || !password) {
+          msg.className = 'message error';
+          msg.textContent = 'Please enter email/username and password / 请输入邮箱或用户名及密码';
+          return;
+        }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Signing in... / 登录中...';
+        msg.className = 'message info';
+        msg.textContent = 'Verifying credentials... / 验证中...';
+
+        // 同时传 loginName 和 email（向后兼容），后端接口使用 loginName 字段
+        callTool('verify_credentials', { loginName: loginName, email: loginName, password: password, mcpLogin: true })
+          .then(function(result) {
+            // callTool resolve 后仍由 notifications/tools/call/result 处理UI更新
+            // 如果通过直接返回结果处理
+            if (result && result.content && result.content[0]) {
+              var text = result.content[0].text;
+              if (text.indexOf('successful') !== -1 || text.indexOf('成功') !== -1) {
+                msg.className = 'message success';
+              } else {
+                msg.className = 'message error';
+              }
+              msg.textContent = text;
+            }
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In / 登录';
+          })
+          .catch(function(error) {
+            msg.className = 'message error';
+            msg.textContent = 'Error: ' + error.message;
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In / 登录';
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

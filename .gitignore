@@ -1,0 +1,13 @@
+node_modules/
+dist/
+tmp/
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+测试结果/
+
+# 本地 HTTPS 证书（包含私钥，禁止提交）
+certs/
+logs/
