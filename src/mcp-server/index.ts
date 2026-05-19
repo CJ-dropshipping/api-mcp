@@ -26,10 +26,39 @@ import { resolve } from 'node:path';
 import { registerTools, handleToolCall, getToolsList } from './tools/index.js';
 import { logger } from '../utils/logger.js';
 import { registerResources, handleResourceRead, getResourcesList } from './resources/index.js';
+import { apiKeyStorage, directTokenStorage } from '../auth/api-key-context.js';
+import { getSession, refreshSession, createSession } from '../auth/session.js';
 
 // 工具/资源注册（模块级，只执行一次）
 registerTools();
 registerResources();
+
+/**
+ * 确保 apiKey 对应的 session 有效，自动创建或刷新。
+ * 在 apiKeyStorage.run(apiKey) 上下文中执行，session 操作全部路由到 apiKeySessions Map。
+ *
+ * @note 新增(apiKey-URL 方案): 每次 /mcp/{apiKey} 请求前调用，保证 accessToken 可用。
+ *   若 accessToken 有效 → 直接返回；若 refreshToken 可用 → 静默刷新；否则使用 apiKey 重新认证。
+ *   认证失败时不中断请求，tools 调用会自然返回「未登录」错误。
+ */
+async function ensureApiKeySession(apiKey: string): Promise<void> {
+  await apiKeyStorage.run(apiKey, async () => {
+    const session = getSession();
+    if (session && new Date(session.accessTokenExpiry) > new Date()) return; // accessToken 有效
+
+    if (session?.refreshToken && new Date(session.refreshTokenExpiry) > new Date()) {
+      const refreshed = await refreshSession();
+      if (refreshed) return; // 刷新成功
+    }
+
+    // 使用 apiKey 重新认证
+    try {
+      await createSession('apikey-url-user', apiKey);
+    } catch (e) {
+      logger.warn('AUTH', `[ensureApiKeySession] apiKey URL 自动认证失败: ${e}`);
+    }
+  });
+}
 
 /**
  * 创建并配置 MCP Server 实例（每次连接独立实例，共享模块级 session 状态）
@@ -97,7 +126,42 @@ async function main() {
         return;
       }
 
-      if (req.url === '/mcp') {
+      /**
+       * @note 新增(apiKey-URL 方案): 同时处理 /mcp、/mcp/{apiKey} 和 /mcp/API@userId@CJ:token 三种路径。
+       *   - /mcp：原有行为，本地 session（currentSession / 文件）
+       *   - /mcp/{apiKey}：从 URL 提取 apiKey，先调用 ensureApiKeySession 自动认证，
+       *     再将请求包装在 apiKeyStorage.run(apiKey) 上下文中执行，session 路由到 apiKeySessions Map。
+       *   - /mcp/API@{userId}@CJ:{accessToken}：从 URL 提取直接 accessToken，无需调用认证 API，
+       *     零服务端内存存储（stateless），将请求包装在 directTokenStorage.run({userId,accessToken}) 中。
+       *
+       * @note 修复(apiKey-URL 方案): GET /mcp 不再尝试解析 body（GET 无 body，会导致 JSON.parse 400）。
+       *   GET 请求（SSE 事件流）直接传 undefined 给 transport.handleRequest。
+       *   POST 请求才读取并解析 body。
+       *
+       * @note 直接 Token URL 格式说明: /mcp/API@{userId}@CJ:{accessToken}
+       *   accessToken 若含 URL 特殊字符（+、/、= 等）须做 URL 编码后填入 ChatGPT 应用 URL。
+       *   Token 过期后需用户更新 ChatGPT 应用的 URL（服务端无存储，无法自动续期）。
+       */
+      const urlPath = (req.url ?? '/').split('?')[0];
+
+      // 优先检测直接 Token 格式：/mcp/API@{userId}@CJ:{accessToken}
+      const directTokenMatch = urlPath.match(/^\/mcp\/(API@([^@]+)@CJ:(.+))$/);
+      // 其次检测 apiKey 格式：/mcp/{anything}（排除直接 Token 格式）
+      const mcpApiKeyMatch = !directTokenMatch && urlPath.match(/^\/mcp\/(.+)$/);
+
+      const urlApiKey = mcpApiKeyMatch ? decodeURIComponent(mcpApiKeyMatch[1]) : undefined;
+      const urlDirectToken = directTokenMatch
+        ? { userId: directTokenMatch[2], accessToken: decodeURIComponent(directTokenMatch[3]) }
+        : undefined;
+
+      const isMcpPath = urlPath === '/mcp' || !!mcpApiKeyMatch || !!directTokenMatch;
+
+      if (isMcpPath) {
+        // apiKey 模式：先确保 session 有效（自动认证/续期），直接 Token 模式无需此步骤
+        if (urlApiKey) {
+          await ensureApiKeySession(urlApiKey);
+        }
+
         const mcpServer = createMCPServer();
         // stateless 模式：无 sessionId，每次请求独立
         const transport = new StreamableHTTPServerTransport({
@@ -105,45 +169,74 @@ async function main() {
         });
         await mcpServer.connect(transport);
 
-        // 读取请求 body
-        const chunks: Buffer[] = [];
-        for await (const chunk of req as AsyncIterable<Buffer>) {
-          chunks.push(chunk);
-        }
+        /**
+         * GET 请求是 SSE 事件流建立，无 body，直接处理。
+         * POST 请求是 JSON-RPC 调用，需要读取并解析 body。
+         */
+        if (req.method === 'GET') {
+          const authTag = urlDirectToken
+            ? `directToken(${urlDirectToken.userId})`
+            : urlApiKey ? `apiKey(${urlApiKey.slice(0, 12)}…)` : 'none';
+          logger.raw(`[MCP-REQ] ${new Date().toISOString()} | GET(SSE) | auth=${authTag}`);
 
-        let body: unknown;
-        try {
-          body = JSON.parse(Buffer.concat(chunks).toString());
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-          await transport.close();
-          await mcpServer.close();
-          return;
-        }
-
-        // @note 新增(60次): 外部客户端（ChatGPT）请求实时日志，弥补 Inspector 无法显示外部 Session 的不足
-        // @note 更新(62次): 加入参数摘要（tools/call 时显示参数 key 列表），同时通过 logger.raw 写入日志文件
-        {
-          const b = body as Record<string, unknown>;
-          let rpcLabel = String(b?.method ?? '?');
-          let argsSummary = '';
-          if (b?.method === 'tools/call') {
-            const params = b.params as Record<string, unknown>;
-            const name = params?.name;
-            rpcLabel = `tools/call:${name}`;
-            const args = params?.arguments as Record<string, unknown> | undefined;
-            if (args && Object.keys(args).length > 0) {
-              // 只显示参数键名（不显示值，避免泄露密码等敏感信息）
-              argsSummary = ` | args=[${Object.keys(args).join(',')}]`;
-            }
+          const handleGet = () => transport.handleRequest(req, res, undefined);
+          if (urlDirectToken) {
+            await directTokenStorage.run(urlDirectToken, handleGet);
+          } else if (urlApiKey) {
+            await apiKeyStorage.run(urlApiKey, handleGet);
+          } else {
+            await handleGet();
           }
-          const sid = String(req.headers['mcp-session-id'] ?? 'new').slice(0, 8);
-          const id  = b?.id != null ? `#${b.id}` : '';
-          logger.raw(`[MCP-REQ] ${new Date().toISOString()} | ${rpcLabel}${id} | sid=${sid}${argsSummary}`);
-        }
+        } else {
+          // 读取请求 body
+          const chunks: Buffer[] = [];
+          for await (const chunk of req as AsyncIterable<Buffer>) {
+            chunks.push(chunk);
+          }
 
-        await transport.handleRequest(req, res, body);
+          let body: unknown;
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString());
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            await transport.close();
+            await mcpServer.close();
+            return;
+          }
+
+          // @note 新增(60次): 外部客户端（ChatGPT）请求实时日志，弥补 Inspector 无法显示外部 Session 的不足
+          // @note 更新(62次): 加入参数摘要（tools/call 时显示参数 key 列表），同时通过 logger.raw 写入日志文件
+          {
+            const b = body as Record<string, unknown>;
+            let rpcLabel = String(b?.method ?? '?');
+            let argsSummary = '';
+            if (b?.method === 'tools/call') {
+              const params = b.params as Record<string, unknown>;
+              const name = params?.name;
+              rpcLabel = `tools/call:${name}`;
+              const args = params?.arguments as Record<string, unknown> | undefined;
+              if (args && Object.keys(args).length > 0) {
+                // 只显示参数键名（不显示值，避免泄露密码等敏感信息）
+                argsSummary = ` | args=[${Object.keys(args).join(',')}]`;
+              }
+            }
+            const authTag = urlDirectToken
+              ? ` | directToken(${urlDirectToken.userId})`
+              : urlApiKey ? ` | apiKey=${urlApiKey.slice(0, 12)}…` : '';
+            const id  = (b as Record<string, unknown>)?.id != null ? `#${(b as Record<string, unknown>).id}` : '';
+            logger.raw(`[MCP-REQ] ${new Date().toISOString()} | ${rpcLabel}${id}${authTag}${argsSummary}`);
+          }
+
+          const handlePost = () => transport.handleRequest(req, res, body);
+          if (urlDirectToken) {
+            await directTokenStorage.run(urlDirectToken, handlePost);
+          } else if (urlApiKey) {
+            await apiKeyStorage.run(urlApiKey, handlePost);
+          } else {
+            await handlePost();
+          }
+        }
 
         res.on('finish', async () => {
           await transport.close();

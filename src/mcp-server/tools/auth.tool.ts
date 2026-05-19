@@ -26,6 +26,7 @@ import {
   ensureAccessToken,
   setSessionDirect,
 } from '../../auth/session.js';
+import { getContextApiKey, getDirectTokenContext } from '../../auth/api-key-context.js';
 import { rateLimiter } from '../../api-client/rate-limiter.js';
 
 /**
@@ -54,9 +55,12 @@ export const authTools: Tool[] = [
     name: 'show_login_form',
     description: [
       '展示CJ Dropshipping登录引导信息（仅返回文字，不弹出UI窗口）。',
+      '⚡ 若通过 /mcp/{apiKey} URL 配置接入，会直接返回"已自动认证"状态，无需登录。',
       '如需弹出登录界面（VS Code Copilot），请直接使用 wait_for_login。',
       '⚠️ Codex / 命令行 / ChatGPT / 无UI环境：请改用 verify_credentials 直接传入邮箱和密码登录。',
-      'Show login guidance text only (no UI popup). For VS Code Copilot with UI, use wait_for_login.',
+      'Show login guidance text only (no UI popup).',
+      '⚡ If connected via /mcp/{apiKey} URL, returns auto-authenticated status immediately.',
+      'For VS Code Copilot with UI, use wait_for_login.',
       '⚠️ Codex/CLI/ChatGPT: use verify_credentials with email+password instead.',
     ].join(' '),
     inputSchema: {
@@ -81,7 +85,12 @@ export const authTools: Tool[] = [
   },
   {
     name: 'check_login_status',
-    description: '检查当前登录状态和token有效期 / Check current login status and token validity',
+    description: [
+      '检查当前登录状态和token有效期。',
+      '⚡ 通过 /mcp/{apiKey} URL 配置接入时，会显示"已通过URL apiKey自动认证"。',
+      'Check current login status and token validity.',
+      '⚡ When connected via /mcp/{apiKey} URL, shows auto-authenticated status.',
+    ].join(' '),
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -182,7 +191,50 @@ export async function handleAuthTool(
       /**
        * @note 基础登录 UI 展示工具。推荐使用 wait_for_login 代替：
        * wait_for_login 会展示 UI 并自动轮询等待用户完成登录，无需用户手动发消息触发后续流程。
+       *
+       * @note 纠正(apiKey-URL): 当通过 /mcp/{apiKey} URL 接入时，ensureApiKeySession 已在
+       * 请求到达前完成认证。此时直接返回认证成功状态，告知 AI 无需登录，可直接执行任务。
        */
+      {
+        const ctxApiKey = getContextApiKey();
+        const directCtx = getDirectTokenContext();
+        if (directCtx) {
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                `✅ 已通过 URL 直接 Token 认证，无需手动登录 / Auto-authenticated via URL token, no login required.`,
+                ``,
+                `👤 用户 / User: ${directCtx.userId}`,
+                ``,
+                `🚀 可直接执行任务，例如：查询订单、搜索商品等。`,
+                `You can directly execute tasks such as: query orders, search products, etc.`,
+                ``,
+                `⚠️ 注意：Token 过期后需更新 ChatGPT 应用 URL 中的 token 内容。`,
+                `Note: When token expires, update the token in your ChatGPT app URL.`,
+              ].join('\n'),
+            }],
+          };
+        }
+        if (ctxApiKey && getSession()) {
+          const session = getSession()!;
+          const maskedKey = ctxApiKey.length > 12 ? `${ctxApiKey.slice(0, 12)}…` : ctxApiKey;
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                `✅ 已通过 URL ApiKey 自动完成认证，无需手动登录 / Auto-authenticated via URL apiKey, no login required.`,
+                ``,
+                `🔑 ApiKey: ${maskedKey}`,
+                `👤 用户 / User: ${session.email}`,
+                ``,
+                `🚀 可直接执行任务，例如：查询订单、搜索商品等。`,
+                `You can directly execute tasks such as: query orders, search products, etc.`,
+              ].join('\n'),
+            }],
+          };
+        }
+      }
       return {
         content: [{
           type: 'text',
@@ -587,7 +639,24 @@ async function handleVerifyCredentials(
 function handleCheckLoginStatus(): {
   content: Array<{ type: string; text: string }>;
 } {
+  const directCtx = getDirectTokenContext();
+  if (directCtx) {
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✅ 已登录（URL 直接 Token 模式）/ Logged in (URL direct token mode)`,
+          `用户 / User: ${directCtx.userId}`,
+          `🔑 认证方式 / Auth via: URL 直接 Token / URL direct token (stateless, no server storage)`,
+          `⚠️ 注意：Token 过期后需更新 ChatGPT 应用 URL / Note: Update URL when token expires`,
+        ].join('\n'),
+      }],
+    };
+  }
+
   const session = getSession();
+  const ctxApiKey = getContextApiKey();
+
   if (!session) {
     return {
       content: [{
@@ -599,8 +668,12 @@ function handleCheckLoginStatus(): {
 
   const valid = isSessionValid();
   const accessExpiry = new Date(session.accessTokenExpiry);
-  const refreshExpiry = new Date(session.refreshTokenExpiry);
   const now = new Date();
+
+  // 认证方式标注
+  const authMethod = ctxApiKey
+    ? `🔑 认证方式 / Auth via: URL apiKey (${ctxApiKey.length > 12 ? ctxApiKey.slice(0, 12) + '…' : ctxApiKey})`
+    : `🔑 认证方式 / Auth via: 手动登录 / Manual login`;
 
   return {
     content: [{
@@ -608,6 +681,7 @@ function handleCheckLoginStatus(): {
       text: valid
         ? `✅ 已登录 / Logged in\n` +
           `用户 / User: ${session.email}\n` +
+          `${authMethod}\n` +
           `AccessToken ${accessExpiry > now ? '有效' : '已过期(可自动续期)'} / ${accessExpiry > now ? 'valid' : 'expired (auto-refresh)'}\n` +
           `RefreshToken 过期时间 / expires: ${session.refreshTokenExpiry}`
         : `⚠️ 会话已过期，请重新登录 / Session expired. Please re-login.`,
