@@ -31,6 +31,7 @@ export const ENDPOINTS = {
   logistic: {
     freightCalculate: '/logistic/freightCalculate',
     logisticsTimeliness: '/logistic/logisticsTimeliness',
+    trackInfo: '/logistic/trackInfo',
   },
 
   // === Shopping / Order ===
@@ -47,6 +48,7 @@ export const ENDPOINTS = {
     listOrder: '/shopping/order/list',
     getOrderDetail: '/shopping/order/getOrderDetail',
     queryOrderInfo: '/shopping/order/queryOrderInfo',
+    getBalance: '/shopping/pay/getBalance',
   },
 
   // === Disputes ===

@@ -52,9 +52,10 @@ import { handleProductTool, productTools } from '../../src/mcp-server/tools/prod
 describe('product.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了3个tools（search_products, get_category_tree, get_warehouses）', () => {
-    expect(productTools).toHaveLength(3);
+  it('注册了4个tools（search_products, get_category_tree, get_warehouses, get_product_detail）', () => {
+    expect(productTools).toHaveLength(4);
     expect(productTools.map(t => t.name)).toContain('search_products');
+    expect(productTools.map(t => t.name)).toContain('get_product_detail');
   });
 
   it('search_products 为 content[].productList[] 中的每个商品注入 productUrl', async () => {

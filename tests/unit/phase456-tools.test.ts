@@ -55,11 +55,13 @@ import { handleStockTool, stockTools } from '../../src/mcp-server/tools/stock.to
 describe('order.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了6个tools', () => {
-    expect(orderTools).toHaveLength(6);
+  it('注册了8个tools', () => {
+    expect(orderTools).toHaveLength(8);
     expect(orderTools.map(t => t.name)).toContain('add_to_cart');
     expect(orderTools.map(t => t.name)).toContain('create_order');
     expect(orderTools.map(t => t.name)).toContain('get_order_list');
+    expect(orderTools.map(t => t.name)).toContain('get_order_detail');
+    expect(orderTools.map(t => t.name)).toContain('get_account_balance');
   });
 
   it('add_to_cart 调用正确的端点', async () => {

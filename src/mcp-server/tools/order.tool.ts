@@ -140,6 +140,46 @@ export const orderTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'get_order_detail',
+    description:
+      '查询单个订单的完整详情，包括商品列表、收货地址、运费、快递单号、订单状态等。\n' +
+      '【意图映射】\n' +
+      '- 用户说「查一下订单 D202505XXX」「订单详情」「这个订单发货了吗」→ 使用此工具\n' +
+      '- 需要快递单号 → features=["LOGISTICS_TIMELINESS"]\n' +
+      '- orderId 必填（支持 CJ 订单号或自定义订单号）\n' +
+      'Get full details of a single order: products, address, shipping, tracking number, status.\n' +
+      '[Intent mapping] "order D202505XXX detail" / "did this order ship" / "get order info" → use this tool.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: {
+          type: 'string',
+          description: '订单ID（支持 CJ 订单号或自定义订单号）/ Order ID (CJ order ID or custom order ID)',
+        },
+        features: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选附加功能：LOGISTICS_TIMELINESS（含物流时效）/ Optional: LOGISTICS_TIMELINESS to include logistics timeliness',
+        },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'get_account_balance',
+    description:
+      '查询CJ账户余额，包括可用余额、冻结金额、奖励金额（单位：美元）。\n' +
+      '【意图映射】\n' +
+      '- 用户说「我的账户余额」「我还有多少钱」「CJ余额」「账户里有多少」→ 使用此工具\n' +
+      'Query CJ account balance (available, frozen, bonus amounts in USD).\n' +
+      '[Intent mapping] "my balance" / "account balance" / "how much money do I have" → use this tool.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 
@@ -246,6 +286,46 @@ export async function handleOrderTool(
           return { content: [{ type: 'text', text: `请求失败 / Request failed: ${listData.message || JSON.stringify(listData)}` }], isError: true };
         }
         return { content: [{ type: 'text', text: JSON.stringify(listData.data, null, 2) }] };
+      }
+
+      case 'get_order_detail': {
+        /**
+         * @note 纠正(12次): 新增 get_order_detail 工具，对应 GET /shopping/order/getOrderDetail。
+         * 支持 orderId（必填）和 features（可选，如 LOGISTICS_TIMELINESS）。
+         * 只读操作，不涉及数据修改，无需用户二次确认。
+         */
+        const params: Record<string, string> = {
+          orderId: String(args.orderId),
+        };
+        if (Array.isArray(args.features) && args.features.length > 0) {
+          // API 支持多个 features 参数，这里先用逗号拼接，如需多参数形式可用 URLSearchParams
+          params.features = (args.features as string[]).join(',');
+        }
+        const detailResponse = await httpClient.request(ENDPOINTS.shopping.getOrderDetail, {
+          method: 'GET',
+          params,
+          tier: 'read',
+        });
+        if (!isApiSuccess(detailResponse)) {
+          return { content: [{ type: 'text', text: `查询订单详情失败 / Get order detail failed: ${detailResponse.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(detailResponse.data, null, 2) }] };
+      }
+
+      case 'get_account_balance': {
+        /**
+         * @note 纠正(12次): 新增 get_account_balance 工具，对应 GET /shopping/pay/getBalance。
+         * 返回可用余额(amount)、冻结金额(freezeAmount)、奖励金额(noWithdrawalAmount)，单位：USD。
+         * 只读操作。
+         */
+        const balanceResponse = await httpClient.request(ENDPOINTS.shopping.getBalance, {
+          method: 'GET',
+          tier: 'read',
+        });
+        if (!isApiSuccess(balanceResponse)) {
+          return { content: [{ type: 'text', text: `查询余额失败 / Get balance failed: ${balanceResponse.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(balanceResponse.data, null, 2) }] };
       }
 
       default:

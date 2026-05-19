@@ -134,6 +134,45 @@ export const productTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'get_product_detail',
+    description:
+      '查询CJ单个商品的完整详情，包括商品名称、图片、价格、变体(颜色/尺码)、库存、描述、物流属性等。\n' +
+      '【意图映射】\n' +
+      '- 用户说「这个商品的详情」「商品详细信息」「查一下这个商品」→ 使用此工具\n' +
+      '- 用户说「这个 pid/SKU 的商品」→ 传入 pid 或 productSku\n' +
+      '- 用户说「美国仓有多少库存」→ countryCode=US\n' +
+      '- pid/productSku/variantSku 三选一必传 / One of pid/productSku/variantSku is required.\n' +
+      'Get full product details: name, images, price, variants(color/size), inventory, description, logistics.\n' +
+      '[Intent mapping] "product detail" / "查这个商品" / "show product info" → use this tool with pid or productSku.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        pid: {
+          type: 'string',
+          description: '商品ID（从搜索结果中获取）/ Product ID (from search results)',
+        },
+        productSku: {
+          type: 'string',
+          description: '商品SPU编码，如 CJJJJTJT05843 / Product SPU code',
+        },
+        variantSku: {
+          type: 'string',
+          description: '变体SKU编码，如 CJJJJTJT05843-Black / Variant SKU code',
+        },
+        countryCode: {
+          type: 'string',
+          description: '国家代码，只返回该国有库存的变体，如 US/CN/GB / Country code to filter variants with inventory in that country',
+        },
+        features: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '附加功能：enable_combine（含组合变体），enable_video（含视频）/ Extra features: enable_combine, enable_video',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 export async function handleProductTool(
@@ -160,6 +199,8 @@ export async function handleProductTool(
         return await handleGetCategoryTree(args);
       case 'get_warehouses':
         return await handleGetWarehouses();
+      case 'get_product_detail':
+        return await handleGetProductDetail(args);
       default:
         return { content: [{ type: 'text', text: `Unknown product tool: ${name}` }], isError: true };
     }
@@ -271,6 +312,53 @@ async function handleGetWarehouses() {
 
   if (!isApiSuccess(response)) {
     return { content: [{ type: 'text', text: `获取仓库失败 / Get warehouses failed: ${response.message}` }], isError: true };
+  }
+
+  return {
+    content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+  };
+}
+
+async function handleGetProductDetail(args: Record<string, unknown>) {
+  /**
+   * @note 纠正(9次): 新增商品详情工具，对应 GET /v1/product/query。
+   * 支持 pid/productSku/variantSku 三选一查询，支持 countryCode 过滤有库存的变体，
+   * 支持 features（enable_combine/enable_video）附加字段。
+   * 返回完整商品详情：名称、图片、价格、变体、库存、描述等，并注入 productUrl。
+   */
+  if (!args.pid && !args.productSku && !args.variantSku) {
+    return {
+      content: [{ type: 'text', text: '❌ 请至少传入 pid、productSku 或 variantSku 之一 / Please provide at least one of: pid, productSku, variantSku.' }],
+      isError: true,
+    };
+  }
+
+  const params: Record<string, string> = {};
+  if (args.pid) params.pid = String(args.pid);
+  if (args.productSku) params.productSku = String(args.productSku);
+  if (args.variantSku) params.variantSku = String(args.variantSku);
+  if (args.countryCode) params.countryCode = String(args.countryCode);
+  if (Array.isArray(args.features) && args.features.length > 0) {
+    params.features = (args.features as string[]).join(',');
+  }
+
+  const response = await httpClient.request(ENDPOINTS.product.query, {
+    method: 'GET',
+    params,
+    tier: 'read',
+  });
+
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `获取商品详情失败 / Get product detail failed: ${response.message}` }], isError: true };
+  }
+
+  // 注入 productUrl，方便 AI 直接返回可点击链接
+  const config = getEnvConfig();
+  const data = response.data as Record<string, unknown> | null;
+  if (data && data.pid) {
+    const pid = String(data.pid);
+    const name = String(data.productNameEn || '');
+    (data as Record<string, unknown>).productUrl = getProductUrl(config.webBase, pid, name);
   }
 
   return {
