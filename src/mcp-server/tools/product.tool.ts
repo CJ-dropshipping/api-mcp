@@ -25,14 +25,20 @@ export const productTools: Tool[] = [
   {
     name: 'search_products',
     description:
-      '搜索CJ商品，支持关键词、分类、价格范围筛选。适用于选品、找货、商品对比场景。\n' +
-      '【参数映射规则】\n' +
+      '搜索CJ平台商品，支持关键词、分类、价格、国家、仓库类型等多维度筛选。\n' +
+      '【意图映射规则】\n' +
+      '- 用户说「全球仓商品」「美国仓商品」「美国仓」「US仓」→ isWarehouse=true, countryCode=US\n' +
+      '- 用户说「中国仓商品」「CN仓商品」→ isWarehouse=true, countryCode=CN\n' +
+      '- 用户说「全球仓」不指定国家 → isWarehouse=true\n' +
       '- 用户说「找手机壳」「搜鼠标」「有没有XX商品」→ keyword=对应关键词（支持中英文）\n' +
       '- 用户说「50美元以内的XX」→ keyword=XX, maxPrice=50\n' +
-      '- 用户说「便宜的XX」「价格低的」→ minPrice/maxPrice 合理设置\n' +
+      '- 用户说「免费配送」「包邮」→ addMarkStatus=1\n' +
+      '- 用户说「按价格从低到高」→ orderBy=2, sort=asc\n' +
       '- 用户说「给我看更多」「下一页」→ pageNum 递增\n' +
-      'Search CJ products by keyword, category, price range. Used for product sourcing, comparison, and discovery.\n' +
-      '[Intent mapping] user says "find phone case" → keyword="phone case"; "搜鼠标" → keyword="鼠标"; "under $50" → maxPrice=50; "show more" → pageNum++',
+      '- 用户说「我自己的备货」「我的私有库存」「我入库的商品」→ 使用 query_private_inventory\n' +
+      'Search CJ products with keyword, category, price, country, warehouse type filters.\n' +
+      '[Intent mapping] "US warehouse" → isWarehouse=true, countryCode=US; "global warehouse" → isWarehouse=true;\n' +
+      '"my own stock/private inventory" → use query_private_inventory instead.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -44,6 +50,19 @@ export const productTools: Tool[] = [
           type: 'string',
           description: '分类ID，可通过 get_category_tree 获取 / Category ID from get_category_tree',
         },
+        countryCode: {
+          type: 'string',
+          description:
+            '国家代码，用于过滤指定国家有库存的商品，如 US/CN/GB/DE/FR 等。\n' +
+            '例：美国仓 → countryCode=US；中国仓 → countryCode=CN / ' +
+            'Country code to filter products with inventory in that country. e.g. US, CN, GB. US warehouse → US.',
+        },
+        isWarehouse: {
+          type: 'boolean',
+          description:
+            '是否查询全球仓商品。true=只查全球仓商品，false/不传=全部商品 / ' +
+            'Filter global warehouse products. true=global warehouse only. Use with countryCode for specific country.',
+        },
         minPrice: {
           type: 'number',
           description: '最低价格(USD) / Minimum price in USD',
@@ -52,13 +71,33 @@ export const productTools: Tool[] = [
           type: 'number',
           description: '最高价格(USD) / Maximum price in USD',
         },
+        addMarkStatus: {
+          type: 'number',
+          description: '包邮筛选：0-不包邮，1-包邮 / Free shipping filter: 0-not free, 1-free shipping',
+        },
+        productType: {
+          type: 'number',
+          description: '商品类型：4-供应商商品，10-视频商品，11-非视频商品 / Product type: 4-Supplier, 10-Video, 11-Non-video',
+        },
+        productFlag: {
+          type: 'number',
+          description: '商品标签：0-热卖，1-新品，2-视频，3-滞销 / Product flag: 0-Trending, 1-New, 2-Video, 3-Slow-moving',
+        },
+        sort: {
+          type: 'string',
+          description: '排序方向：desc-降序（默认），asc-升序 / Sort direction: desc(default), asc',
+        },
+        orderBy: {
+          type: 'number',
+          description: '排序字段：0-最佳匹配（默认），1-刊登数，2-价格，3-创建时间，4-库存 / Sort field: 0-Best match, 1-Listed count, 2-Price, 3-Create time, 4-Inventory',
+        },
         pageNum: {
           type: 'number',
           description: '页码，默认1 / Page number, default 1',
         },
         pageSize: {
           type: 'number',
-          description: '每页数量，默认20，最大50 / Page size, default 20, max 50',
+          description: '每页数量，默认20，最大100 / Page size, default 20, max 100',
         },
       },
       required: [],
@@ -83,8 +122,12 @@ export const productTools: Tool[] = [
   {
     name: 'get_warehouses',
     description:
-      '获取CJ全球仓库列表，包含仓库名称、国家、编码。用于查看发货仓位置、库存分布 / ' +
-      'Get CJ global warehouse list with name, country, code. Used for checking shipping origins and stock distribution.',
+      '获取CJ全球仓库列表，包含仓库名称、国家、仓库ID(warehouseId)。\n' +
+      '【用法】查询私有库存时，先调用此工具获取仓库列表，再将目标仓库的 warehouseId 传给 query_private_inventory 进行过滤。\n' +
+      '- 用户说「美国仓」「US仓」→ 找到 country=US 的仓库，取其 warehouseId\n' +
+      '- 用户说「中国仓」「CN仓」→ 找到 country=CN 的仓库，取其 warehouseId\n' +
+      'Get CJ global warehouse list with name, country, warehouseId.\n' +
+      '[Usage] To filter private inventory by warehouse: call this first to get warehouseId, then pass to query_private_inventory.',
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -138,14 +181,23 @@ async function handleSearchProducts(args: Record<string, unknown>) {
    * 原实现用 POST + body 导致 "Request method 'POST' not supported"
    * @note 纠正(77次): 搜索关键词参数应使用 keyWord（支持中英文），而非 productNameEn（仅英文）。
    * 修复前使用 productNameEn 导致中文搜索结果不准确。
+   * @note 纠正(9次): 新增 countryCode/isWarehouse/addMarkStatus/productType/productFlag/sort/orderBy 参数，
+   * 支持全球仓（isWarehouse=true）、国家过滤（countryCode=US）等场景；页面大小上限提升至100。
    */
   const params: Record<string, string> = {};
   if (args.keyword) params.keyWord = String(args.keyword);
   if (args.categoryId) params.categoryId = String(args.categoryId);
-  if (args.minPrice != null) params.minPrice = String(args.minPrice);
-  if (args.maxPrice != null) params.maxPrice = String(args.maxPrice);
+  if (args.countryCode) params.countryCode = String(args.countryCode);
+  if (args.isWarehouse != null) params.isWarehouse = String(args.isWarehouse);
+  if (args.minPrice != null) params.startSellPrice = String(args.minPrice);
+  if (args.maxPrice != null) params.endSellPrice = String(args.maxPrice);
+  if (args.addMarkStatus != null) params.addMarkStatus = String(args.addMarkStatus);
+  if (args.productType != null) params.productType = String(args.productType);
+  if (args.productFlag != null) params.productFlag = String(args.productFlag);
+  if (args.sort) params.sort = String(args.sort);
+  if (args.orderBy != null) params.orderBy = String(args.orderBy);
   params.pageNum = String((args.pageNum as number) || 1);
-  params.pageSize = String(Math.min((args.pageSize as number) || 20, 50));
+  params.pageSize = String(Math.min((args.pageSize as number) || 20, 100));
 
   const response = await httpClient.request(ENDPOINTS.product.listV2, {
     method: 'GET',
