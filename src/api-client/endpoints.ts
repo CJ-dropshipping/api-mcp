@@ -69,6 +69,7 @@ export const ENDPOINTS = {
     getDisputeList: '/disputes/getDisputeList',
     getDisputeDetail: '/disputes/getDisputeDetail',
     disputeConfirmInfo: '/disputes/disputeConfirmInfo',
+    disputeProducts: '/disputes/disputeProducts',
   },
 
   // === Shop ===
@@ -84,6 +85,7 @@ export const ENDPOINTS = {
   // === Warehouse ===
   warehouse: {
     detail: '/warehouse/detail',
+    orderPictures: '/storehouseCenterWeb/syncStorehouseVideoRequests',
   },
 
   // === Store ===

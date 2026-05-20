@@ -25,20 +25,24 @@ export const productTools: Tool[] = [
   {
     name: 'search_products',
     description:
-      '搜索CJ平台商品，支持关键词、分类、价格、国家、仓库类型等多维度筛选。\n' +
+      '搜索CJ平台上已有的商品目录，支持关键词、分类、价格、国家、仓库类型等多维度筛选。\n' +
       '【意图映射规则】\n' +
       '- 用户说「全球仓商品」「美国仓商品」「美国仓」「US仓」→ isWarehouse=true, countryCode=US\n' +
       '- 用户说「中国仓商品」「CN仓商品」→ isWarehouse=true, countryCode=CN\n' +
       '- 用户说「全球仓」不指定国家 → isWarehouse=true\n' +
-      '- 用户说「找手机壳」「搜鼠标」「有没有XX商品」→ keyword=对应关键词（支持中英文）\n' +
+      '- 用户说「找手机壳」「搜一下鼠标」→ keyword=对应关键词（支持中英文）\n' +
       '- 用户说「50美元以内的XX」→ keyword=XX, maxPrice=50\n' +
       '- 用户说「免费配送」「包邮」→ addMarkStatus=1\n' +
       '- 用户说「按价格从低到高」→ orderBy=2, sort=asc\n' +
       '- 用户说「给我看更多」「下一页」→ pageNum 递增\n' +
       '- 用户说「我自己的备货」「我的私有库存」「我入库的商品」→ 使用 query_private_inventory\n' +
-      'Search CJ products with keyword, category, price, country, warehouse type filters.\n' +
-      '[Intent mapping] "US warehouse" → isWarehouse=true, countryCode=US; "global warehouse" → isWarehouse=true;\n' +
-      '"my own stock/private inventory" → use query_private_inventory instead.',
+      '⚠️【搜品 vs 搜索商品 区分】\n' +
+      '- 此工具仅搜索 CJ 平台**现有商品目录**中的商品\n' +
+      '- 若用户说「帮我搜品」「我想让CJ帮我找货源」「提交搜品需求」「这个商品CJ有没有代发」「我在1688/速卖通/阿里看到一个商品，帮我找」→ 使用 create_sourcing（不是此工具）\n' +
+      'Search EXISTING products in CJ catalog.\n' +
+      '[Intent mapping] "US warehouse" → isWarehouse=true, countryCode=US;\n' +
+      '"my own stock/private inventory" → use query_private_inventory instead.\n' +
+      '[NOT for] "sourcing request" / "find product not on CJ" / "I found this on 1688, can CJ source it?" → use create_sourcing.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -122,12 +126,14 @@ export const productTools: Tool[] = [
   {
     name: 'get_warehouses',
     description:
-      '获取CJ全球仓库列表，包含仓库名称、国家、仓库ID(warehouseId)。\n' +
-      '【用法】查询私有库存时，先调用此工具获取仓库列表，再将目标仓库的 warehouseId 传给 query_private_inventory 进行过滤。\n' +
-      '- 用户说「美国仓」「US仓」→ 找到 country=US 的仓库，取其 warehouseId\n' +
-      '- 用户说「中国仓」「CN仓」→ 找到 country=CN 的仓库，取其 warehouseId\n' +
-      'Get CJ global warehouse list with name, country, warehouseId.\n' +
-      '[Usage] To filter private inventory by warehouse: call this first to get warehouseId, then pass to query_private_inventory.',
+      '【仅用于】获取CJ全球仓库区域列表（国家维度：US/CN/DE/GB/PL等），含各区域 warehouseId，主要用于过滤 query_private_inventory 的仓库维度。\n' +
+      '⚠️【严格意图区分】\n' +
+      '  - 用户说「CJ有哪些仓库」「全球仓有哪些」「美国/中国/德国仓的ID是多少」→ 使用此工具\n' +
+      '  - 用户说「查看某个仓库的详情/地址/支持物流」→ 使用 get_storage_info（需要 storageId UUID）\n' +
+      '  - 用户说「某个订单在哪个仓库」「这个订单的仓库信息」→ 先调用 get_order_detail 获取 storageId，再调 get_storage_info\n' +
+      '⚠️ 此工具返回的 id 字段是区域标识，不是仓库UUID，不可直接用于 get_storage_info。\n\n' +
+      'Get CJ global warehouse REGION list (country level: US/CN/DE/GB...) with warehouseId for inventory filtering.\n' +
+      '[NOT for] getting warehouse address/details — use get_storage_info with a UUID storageId for that.',
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -234,11 +240,17 @@ export const productTools: Tool[] = [
   {
     name: 'create_sourcing',
     description: [
-      '向 CJ 提交采购需求（Sourcing），请求 CJ 帮您寻找或采购特定商品。',
-      '触发场景：「帮我采购 XXX」「提交一个采购需求」「我需要找这个商品」「create sourcing request」。',
-      '⚠️ productName 和 productImage 为必填，其他参数选填。',
+      '向 CJ 提交搜品/采购需求（Sourcing Request），请求 CJ 帮您寻找或采购特定商品。',
+      '【触发场景】：',
+      '  - 「帮我搜品」「我要搜品」「提交搜品需求」',
+      '  - 「帮我找货源」「CJ能不能代发这个商品」',
+      '  - 「我在1688/速卖通/阿里/ebay看到这个商品，帮我找」',
+      '  - 「create sourcing request」「post sourcing」',
+      '  - 用户提供了商品名称 + 图片URL，要求CJ帮忙采购',
+      '⚠️ productName 和 productImage 为必填（商品名称 + 图片URL）。',
+      '⚠️【注意区分】: 此工具是创建新搜品工单，不是搜索CJ现有商品（现有商品用 search_products）。',
       '返回 cjSourcingId，可用 query_sourcing 查询处理结果。',
-    ].join(' '),
+    ].join('\n'),
     inputSchema: {
       type: 'object',
       properties: {
@@ -257,9 +269,9 @@ export const productTools: Tool[] = [
   {
     name: 'query_sourcing',
     description: [
-      '查询采购需求（Sourcing）的处理结果和状态。',
-      '触发场景：「我的采购需求处理了吗」「查询 sourcingId 285 的状态」「query sourcing result」。',
-      '参数 sourceIds 为 CJ 分配的采购ID数组（从 create_sourcing 获取）。',
+      '查询搜品需求（Sourcing）的处理结果和状态。',
+      '触发场景：「我的搜品需求处理了吗」「搜品结果出来了吗」「查询 sourcingId 285 的状态」「query sourcing result」。',
+      '参数 sourceIds 为 CJ 分配的搜品ID数组（从 create_sourcing 获取）。',
     ].join(' '),
     inputSchema: {
       type: 'object',

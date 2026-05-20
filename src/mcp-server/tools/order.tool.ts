@@ -240,8 +240,15 @@ export const orderTools: Tool[] = [
       '- 用户说「查一下订单 D202505XXX」「订单详情」「这个订单发货了吗」→ 使用此工具\n' +
       '- 需要快递单号 → features=["LOGISTICS_TIMELINESS"]\n' +
       '- orderId 必填（支持 CJ 订单号或自定义订单号）\n' +
+      '【物流追踪二步流程】\n' +
+      '- 订单详情的 trackNumber 字段仅是快递单号，不包含实时物流事件/位置/节点信息\n' +
+      '- 若用户问「包裹到哪了」「物流进度」「快递状态」「track package」→\n' +
+      '  第一步：调用 get_order_detail 拿到 trackNumber\n' +
+      '  第二步：必须再调用 get_tracking_info([trackNumber]) 获取实时追踪信息\n' +
+      '  不得直接用 trackNumber 代替实时物流查询结果\n' +
       'Get full details of a single order: products, address, shipping, tracking number, status.\n' +
-      '[Intent mapping] "order D202505XXX detail" / "did this order ship" / "get order info" → use this tool.',
+      '[Intent mapping] "order D202505XXX detail" / "did this order ship" / "get order info" → use this tool.\n' +
+      '[Logistics tracking] trackNumber from order detail is just a number. For real-time events, MUST call get_tracking_info([trackNumber]) as Step 2.',
     inputSchema: {
       type: 'object' as const,
       properties: {

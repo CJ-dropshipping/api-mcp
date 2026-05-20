@@ -23,7 +23,7 @@ const SENSITIVE_TOOLS = new Set([
   'delete_order',       // 删除订单 (不可恢复)
   'pay_by_balance',     // 余额支付单个订单 (涉及真实资金，不可撤销)
   'pay_by_balance_v2',  // 余额支付母单 (涉及真实资金，不可撤销)
-  'confirm_dispute',    // 确认纠纷处理结果 (提交后不可更改)
+  'confirm_dispute',    // 确认纠纷处理结果 (提交后不可更改) — 保留以向后兼容，实为只读查询
   'save_product_to_shop', // 保存商品到店铺（影响店铺商品数据）
   'create_product_connection', // 建立商品连接（影响订单自动匹配）
   'disconnect_product',   // 断开商品连接（可能影响现有订单匹配）

@@ -95,16 +95,24 @@ describe('order.tool', () => {
 describe('dispute.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了5个tools', () => {
-    expect(disputeTools).toHaveLength(5);
+  it('注册了6个tools', () => {
+    expect(disputeTools).toHaveLength(6);
+    expect(disputeTools.map(t => t.name)).toContain('get_dispute_products');
     expect(disputeTools.map(t => t.name)).toContain('create_dispute');
     expect(disputeTools.map(t => t.name)).toContain('cancel_dispute');
     expect(disputeTools.map(t => t.name)).toContain('list_disputes');
+    expect(disputeTools.map(t => t.name)).toContain('get_dispute_detail');
     expect(disputeTools.map(t => t.name)).toContain('confirm_dispute');
   });
 
-  it('create_dispute 使用 write tier', async () => {
-    await handleDisputeTool('create_dispute', { orderId: 'O001', reason: 'damaged' });
+  it('create_dispute 使用 write tier 并传正确参数', async () => {
+    await handleDisputeTool('create_dispute', {
+      orderId: 'O001',
+      disputeReasonId: 1,
+      expectType: 1,
+      messageText: '质量问题',
+      productInfoList: [{ lineItemId: 'L001', quantity: 1, price: 10 }],
+    });
     expect(mockRequest).toHaveBeenCalledWith(
       '/disputes/create',
       expect.objectContaining({ tier: 'write' })
@@ -159,12 +167,15 @@ describe('webhook.tool', () => {
 describe('stock.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了5个tools', () => {
-    expect(stockTools).toHaveLength(5);
+  it('注册了7个tools', () => {
+    expect(stockTools).toHaveLength(7);
     expect(stockTools.map(t => t.name)).toContain('query_private_inventory');
     expect(stockTools.map(t => t.name)).toContain('query_sku_details');
+    expect(stockTools.map(t => t.name)).toContain('query_sku_detail_page');
     expect(stockTools.map(t => t.name)).toContain('query_sku_detail_by_sku');
+    expect(stockTools.map(t => t.name)).toContain('get_product_inventory');
     expect(stockTools.map(t => t.name)).toContain('get_storage_info');
+    expect(stockTools.map(t => t.name)).toContain('query_warehouse_order_pictures');
   });
 
   it('query_sku_details 调用正确端点', async () => {

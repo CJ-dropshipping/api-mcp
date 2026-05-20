@@ -67,13 +67,16 @@ export const logisticsTools: Tool[] = [
   {
     name: 'get_tracking_info',
     description:
-      '查询快递包裹的物流追踪信息，支持批量查询多个快递单号。\n' +
+      '查询快递包裹的实时物流追踪信息，返回当前状态、位置、预计送达时间等。支持批量查询多个快递单号。\n' +
       '【意图映射】\n' +
       '- 用户说「我的包裹到哪了」「追踪单号 CJXXX」「物流状态」「快递跟踪」→ 使用此工具\n' +
-      '- 快递单号从订单详情（trackNumber 字段）或发货信息中获取\n' +
+      '- 快递单号来源：先调 get_order_detail 获取订单的 trackNumber 字段，再传入此工具\n' +
       '- trackNumbers 至少传1个，支持批量\n' +
-      'Track shipping package(s) by tracking number(s). Supports batch queries.\n' +
-      '[Intent mapping] "where is my package" / "track CJXXX" / "shipping status" → use this tool.',
+      '【重要】订单详情中的 trackNumber 仅是快递单号，不含实时物流事件；\n' +
+      '       必须调用本工具才能获取真实的物流追踪数据（地点、时间节点、当前状态）。\n' +
+      'Get REAL-TIME shipment tracking info: current status, location, ETA. Supports batch queries.\n' +
+      '[Intent mapping] "where is my package" / "track CJXXX" / "shipping status" / "is it delivered" → use this tool.\n' +
+      '[IMPORTANT] trackNumber from order detail is just a number. Call THIS tool to get actual tracking events.',
     inputSchema: {
       type: 'object' as const,
       properties: {
