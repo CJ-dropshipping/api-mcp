@@ -31,7 +31,7 @@ export function isApiSuccess(response: ApiResponse): boolean {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: Record<string, unknown>;
   params?: Record<string, string>;
   tier?: RateTier;

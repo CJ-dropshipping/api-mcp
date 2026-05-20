@@ -180,6 +180,55 @@ export const orderTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'confirm_order',
+    description:
+      '⚠️【敏感操作 - 需用户确认】确认订单并触发付款，操作不可撤销，将扣除账户余额。\n' +
+      '触发场景：「确认订单 D202505XXX」「我要付这个订单」「确认付款」「confirm this order」。\n' +
+      '⚠️ 此操作会直接扣款，AI 必须在执行前明确告知用户"此操作将扣款并不可撤销"，确认用户同意后再调用。\n' +
+      '参数：orderId（CJ订单号，必填）。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: { type: 'string', description: 'CJ订单号（必填）/ CJ Order ID (required)' },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'delete_order',
+    description:
+      '⚠️【敏感操作 - 需用户确认】删除订单，操作不可恢复。\n' +
+      '触发场景：「删除订单 D202505XXX」「取消并删除这个订单」「delete order」。\n' +
+      '⚠️ 此操作不可撤销，AI 必须在执行前明确告知用户"此操作将永久删除该订单"，确认用户同意后再调用。\n' +
+      '参数：orderId（CJ订单号，必填）。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: { type: 'string', description: 'CJ订单号（必填）/ CJ Order ID (required)' },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'query_cogs',
+    description: [
+      '查询订单的采购成本（COGS）基础数据，包含商品金额、运费、税费等明细。',
+      '触发场景：「查一下这些订单的成本」「订单采购价格是多少」「COGS query」「订单的货物成本」。',
+      '参数 orderCodesList 为 CJ 订单号数组（必填，每次可批量查询多个）。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderCodesList: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'CJ订单号数组（必填）/ Array of CJ order codes (required)',
+        },
+      },
+      required: ['orderCodesList'],
+    },
+  },
 ];
 
 
@@ -220,9 +269,14 @@ export async function handleOrderTool(
         }, 'read');
 
       case 'get_pay_order_list':
-        return await callApi(ENDPOINTS.shopping.getPayOrderListV3, {
+        /**
+         * @note 纠正(16次): /shopping/directOrder/getPayOrderListV3 不存在于API文档。
+         * 改用 /shopping/order/list 并默认传 status=UNPAID 以过滤待支付订单。
+         */
+        return await callApi(ENDPOINTS.shopping.listOrder, {
           pageNum: (args.pageNum as number) || 1,
           pageSize: Math.min((args.pageSize as number) || 20, 50),
+          status: 'UNPAID',
         }, 'read');
 
       case 'get_order_list': {
@@ -326,6 +380,64 @@ export async function handleOrderTool(
           return { content: [{ type: 'text', text: `查询余额失败 / Get balance failed: ${balanceResponse.message}` }], isError: true };
         }
         return { content: [{ type: 'text', text: JSON.stringify(balanceResponse.data, null, 2) }] };
+      }
+
+      case 'confirm_order': {
+        /**
+         * @note 纠正(13次): 新增 confirm_order 工具，对应 PATCH /shopping/order/confirmOrder。
+         * ⚠️ 敏感操作：确认订单付款，扣除账户余额，不可撤销。
+         * sensitive-ops.ts 已注册，AI 调用前会看到确认提示。
+         */
+        if (!args.orderId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId / Please provide orderId.' }], isError: true };
+        }
+        const confirmResp = await httpClient.request(ENDPOINTS.shopping.confirmOrder, {
+          method: 'PATCH',
+          body: { orderId: String(args.orderId) },
+          tier: 'write',
+        });
+        if (!isApiSuccess(confirmResp)) {
+          return { content: [{ type: 'text', text: `确认订单失败 / Confirm order failed: ${confirmResp.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: `✅ 订单已确认 / Order confirmed: ${JSON.stringify(confirmResp.data)}` }] };
+      }
+
+      case 'delete_order': {
+        /**
+         * @note 纠正(13次): 新增 delete_order 工具，对应 DELETE /shopping/order/deleteOrder?orderId=。
+         * ⚠️ 敏感操作：永久删除订单，不可恢复。
+         * sensitive-ops.ts 已注册，AI 调用前会看到确认提示。
+         */
+        if (!args.orderId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId / Please provide orderId.' }], isError: true };
+        }
+        const deleteResp = await httpClient.request(ENDPOINTS.shopping.deleteOrder, {
+          method: 'DELETE',
+          params: { orderId: String(args.orderId) },
+          tier: 'write',
+        });
+        if (!isApiSuccess(deleteResp)) {
+          return { content: [{ type: 'text', text: `删除订单失败 / Delete order failed: ${deleteResp.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: `✅ 订单已删除 / Order deleted: ${JSON.stringify(deleteResp.data)}` }] };
+      }
+
+      case 'query_cogs': {
+        /**
+         * @note 新增(第15次): query_cogs，POST /shopping/order/queryCogsBasicDataOrderInfoList。
+         * 查询订单采购成本明细（商品金额/运费/税费等），只读操作。
+         */
+        if (!Array.isArray(args.orderCodesList) || args.orderCodesList.length === 0) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderCodesList 数组 / Please provide orderCodesList array.' }], isError: true };
+        }
+        const cogsResp = await httpClient.request(ENDPOINTS.shopping.queryCogs, {
+          body: { orderCodesList: args.orderCodesList },
+          tier: 'read',
+        });
+        if (!isApiSuccess(cogsResp)) {
+          return { content: [{ type: 'text', text: `查询COGS失败 / Query COGS failed: ${cogsResp.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(cogsResp.data, null, 2) }] };
       }
 
       default:

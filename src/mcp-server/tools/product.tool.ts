@@ -1,7 +1,7 @@
 /**
  * @fileoverview 商品查询 MCP Tools
  * - search_products: 搜索商品 (对应 /product/listV2 或 /product/query)
- * - get_category_tree: 获取分类树 (对应 /category/getCategoryTree)
+ * - get_category_tree: 获取分类树 (对应 /product/getCategory)
  * - get_warehouses: 获取全球仓库列表 (对应 /product/globalWarehouseList)
  *
  * 描述参考 mycj-react 中商品搜索、分类筛选、仓库选择的业务场景
@@ -173,6 +173,210 @@ export const productTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'query_cj_inventory',
+    description: [
+      '查询 CJ 平台公开商品库存（非私有备货库存）。',
+      '触发场景：「这个商品CJ有多少库存」「SKU CJXXX 还有多少货」「查一下某个变体的CJ库存」。',
+      '⚠️ 如果查询自己备货的私有库存请使用 query_private_inventory。',
+      '支持三种查询方式（三选一）：vid（变体ID）/ sku（变体SKU或SPU）/ pid（商品ID）。',
+      '返回各仓库的库存数量（totalInventoryNum / cjInventoryNum / factoryInventoryNum）。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        vid: { type: 'string', description: '变体ID（vid），与 sku/pid 三选一 / Variant ID' },
+        sku: { type: 'string', description: '变体SKU或SPU编码，与 vid/pid 三选一 / Variant SKU or SPU code' },
+        pid: { type: 'string', description: '商品ID（pid），与 vid/sku 三选一 / Product ID' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_my_products',
+    description: [
+      '查询我的选品列表（已添加到我的商品的产品），支持关键词搜索和时间筛选。',
+      '触发场景：「我保存的商品」「我的选品列表」「查一下我收藏的商品」「isListed=1 已刊登的商品」。',
+      '⚠️ 与 search_products 不同：此工具返回用户主动添加过的商品，不是全量搜索。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: 'SKU/SPU/商品名搜索词 / Keyword: SKU, SPU, or product name' },
+        categoryId: { type: 'string', description: '品类ID / Category ID' },
+        startAt: { type: 'string', description: '添加时间起始（ISO或时间戳）/ Start time for when product was added' },
+        endAt: { type: 'string', description: '添加时间截止 / End time' },
+        isListed: { type: 'number', description: '是否已刊登 0/1 / Is listed: 0=no, 1=yes' },
+        pageNum: { type: 'number', description: '页码，默认 1 / Page number' },
+        pageSize: { type: 'number', description: '每页数量，默认 20，最大 200 / Page size, max 200' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_product_variants',
+    description: [
+      '查询商品的所有变体列表（颜色/尺码/规格）及其价格、重量、图片等信息。',
+      '触发场景：「这个商品有哪些颜色」「获取变体列表」「查一下 pid=XX 的所有 SKU」。',
+      '参数 pid/productSku/variantSku 三选一，countryCode 可选用于筛选有库存的变体。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pid: { type: 'string', description: '商品ID（pid）/ Product ID' },
+        productSku: { type: 'string', description: '商品SPU编码 / Product SPU code' },
+        variantSku: { type: 'string', description: '变体SKU编码 / Variant SKU code' },
+        countryCode: { type: 'string', description: '国家代码，只返回该国有库存的变体，如 US/CN / Country code' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'create_sourcing',
+    description: [
+      '向 CJ 提交采购需求（Sourcing），请求 CJ 帮您寻找或采购特定商品。',
+      '触发场景：「帮我采购 XXX」「提交一个采购需求」「我需要找这个商品」「create sourcing request」。',
+      '⚠️ productName 和 productImage 为必填，其他参数选填。',
+      '返回 cjSourcingId，可用 query_sourcing 查询处理结果。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        productName: { type: 'string', description: '商品名称（必填）/ Product name (required)' },
+        productImage: { type: 'string', description: '商品图片URL（必填）/ Product image URL (required)' },
+        productUrl: { type: 'string', description: '商品原始链接 / Original product URL' },
+        remark: { type: 'string', description: '备注说明 / Remark / notes' },
+        price: { type: 'string', description: '参考价格（USD）/ Reference price in USD' },
+        thirdProductId: { type: 'string', description: '第三方商品ID / Third-party product ID' },
+        thirdVariantId: { type: 'string', description: '第三方变体ID / Third-party variant ID' },
+        thirdProductSku: { type: 'string', description: '第三方商品SKU / Third-party product SKU' },
+      },
+      required: ['productName', 'productImage'],
+    },
+  },
+  {
+    name: 'query_sourcing',
+    description: [
+      '查询采购需求（Sourcing）的处理结果和状态。',
+      '触发场景：「我的采购需求处理了吗」「查询 sourcingId 285 的状态」「query sourcing result」。',
+      '参数 sourceIds 为 CJ 分配的采购ID数组（从 create_sourcing 获取）。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sourceIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '采购需求ID数组（必填）/ Array of CJ sourcing IDs (required)',
+        },
+      },
+      required: ['sourceIds'],
+    },
+  },
+  {
+    name: 'list_product_connections',
+    description: [
+      '查询店铺商品连接记录列表（CJ商品与平台商品的对应关系）。',
+      '触发场景：「查看我的商品连接」「这个商品连接了哪些店铺」「product connection list」。',
+      '可按 shopId/platformProductId/platformVariantId 筛选，支持分页。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shopId: { type: 'string', description: '店铺ID（可选）/ Shop ID (optional)' },
+        platformProductId: { type: 'string', description: '平台商品ID（可选）/ Platform product ID' },
+        platformVariantId: { type: 'string', description: '平台变体ID（可选）/ Platform variant ID' },
+        page: { type: 'number', description: '页码，默认1 / Page number' },
+        pageSize: { type: 'number', description: '每页数量，默认10，最大100 / Page size, max 100' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_product_reviews',
+    description: [
+      '查询商品的买家评价（评分、评论内容、图片）。',
+      '触发场景：「这个商品的评价怎么样」「查一下 pid=XX 的评价」「product reviews」「customer comments」。',
+      '参数 pid 为必填，score 可按评分（1-5）筛选，支持分页。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pid: { type: 'string', description: '商品ID（必填）/ Product ID (required)' },
+        score: { type: 'number', description: '按评分筛选 1-5（可选）/ Filter by score 1-5 (optional)' },
+        pageNum: { type: 'number', description: '页码，默认1 / Page number' },
+        pageSize: { type: 'number', description: '每页数量，默认20 / Page size, default 20' },
+      },
+      required: ['pid'],
+    },
+  },
+  {
+    name: 'create_product_connection',
+    description: [
+      '将CJ商品（变体）与平台店铺商品（变体）进行绑定，建立商品连接关系。',
+      '⚠️【敏感操作 - 需用户确认】建立连接后，平台店铺产生的订单将自动匹配到对应CJ商品进行履约。',
+      '触发场景：「绑定商品」「创建商品连接」「将 CJ 商品连接到 Shopify 商品」「create product connection」。',
+      '必填参数：defaultArea（发货区域）、logistics（物流方式名称如 PacketPlus）、cjProductId（CJ商品ID）、platformProductId（平台商品ID）、variantList（变体映射列表）。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        cjProductId: { type: 'string', description: 'CJ商品ID（必填）/ CJ product ID (required)' },
+        platformProductId: { type: 'string', description: '平台商品ID（必填）/ Platform product ID (required)' },
+        defaultArea: { type: 'number', description: '默认发货区域（必填，如 1）/ Default area (required, e.g. 1)' },
+        logistics: { type: 'string', description: '物流方式名称（必填，如 PacketPlus）/ Logistics method name (required)' },
+        shopId: { type: 'string', description: '店铺ID（可选，不填则使用账户绑定的默认店铺）/ Shop ID (optional)' },
+        sourceCountryCode: { type: 'string', description: '发货国家代码（可选，如 CN）/ Source country code' },
+        targetCountryCode: { type: 'string', description: '目的国家代码（可选，如 US）/ Target country code' },
+        variantList: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              cjVariantId: { type: 'string', description: 'CJ变体ID / CJ variant ID' },
+              platformVariantId: { type: 'string', description: '平台变体ID / Platform variant ID' },
+            },
+            required: ['cjVariantId', 'platformVariantId'],
+          },
+          description: '变体映射列表（必填，至少一项）/ Variant mapping list (required, at least one)',
+        },
+      },
+      required: ['cjProductId', 'platformProductId', 'defaultArea', 'logistics', 'variantList'],
+    },
+  },
+  {
+    name: 'disconnect_product',
+    description: [
+      '断开平台商品与CJ商品之间的连接关系，移除绑定。',
+      '⚠️【敏感操作 - 需用户确认】断开连接后，该平台商品的订单将无法自动匹配到CJ商品进行履约。若不传 platformVariantId，将移除该平台商品的所有变体连接。',
+      '触发场景：「断开商品连接」「取消商品绑定」「remove product connection」「disconnect product」。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        platformProductId: { type: 'string', description: '平台商品ID（必填）/ Platform product ID (required)' },
+        shopId: { type: 'string', description: '店铺ID（可选）/ Shop ID (optional)' },
+        platformVariantId: { type: 'string', description: '平台变体ID（可选，不填则移除该商品所有变体连接）/ Platform variant ID (optional, if empty removes all variants)' },
+      },
+      required: ['platformProductId'],
+    },
+  },
+  {
+    name: 'search_products_by_image',
+    description: [
+      '以图搜货：通过提供商品图片URL，在CJ商品目录中搜索视觉相似的商品。',
+      '触发场景：「我有张图，帮我找类似商品」「以图搜货」「image search」「find similar products」。',
+      '⚠️ 此API仅限白名单用户使用，非白名单用户调用会返回权限错误。',
+      '参数 imageUrl 必填，建议使用清晰的商品主图URL。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        imageUrl: { type: 'string', description: '商品图片URL（必填，建议主图）/ Product image URL (required)' },
+      },
+      required: ['imageUrl'],
+    },
+  },
 ];
 
 export async function handleProductTool(
@@ -201,6 +405,26 @@ export async function handleProductTool(
         return await handleGetWarehouses();
       case 'get_product_detail':
         return await handleGetProductDetail(args);
+      case 'query_cj_inventory':
+        return await handleQueryCjInventory(args);
+      case 'get_my_products':
+        return await handleGetMyProducts(args);
+      case 'get_product_variants':
+        return await handleGetProductVariants(args);
+      case 'create_sourcing':
+        return await handleCreateSourcing(args);
+      case 'query_sourcing':
+        return await handleQuerySourcing(args);
+      case 'list_product_connections':
+        return await handleListProductConnections(args);
+      case 'get_product_reviews':
+        return await handleGetProductReviews(args);
+      case 'create_product_connection':
+        return await handleCreateProductConnection(args);
+      case 'disconnect_product':
+        return await handleDisconnectProduct(args);
+      case 'search_products_by_image':
+        return await handleSearchProductsByImage(args);
       default:
         return { content: [{ type: 'text', text: `Unknown product tool: ${name}` }], isError: true };
     }
@@ -284,12 +508,12 @@ async function handleSearchProducts(args: Record<string, unknown>) {
 
 async function handleGetCategoryTree(args: Record<string, unknown>) {
   /**
-   * @note 纠正: category/getCategoryTree 是 GET 接口
+   * @note 纠正(16次): /category/getCategoryTree 不存在，实际API为 /product/getCategory (GET)
    */
   const params: Record<string, string> = {};
   if (args.parentId) params.parentId = String(args.parentId);
 
-  const response = await httpClient.request(ENDPOINTS.category.getCategoryTree, {
+  const response = await httpClient.request(ENDPOINTS.product.getCategory, {
     method: 'GET',
     params,
     tier: 'read',
@@ -364,4 +588,261 @@ async function handleGetProductDetail(args: Record<string, unknown>) {
   return {
     content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
   };
+}
+
+async function handleQueryCjInventory(args: Record<string, unknown>) {
+  /**
+   * @note 纠正(13次): 新增 query_cj_inventory 工具，查询 CJ 平台公开商品库存。
+   * 支持三种查询方式：vid（变体ID）/sku（变体SKU/SPU）/pid（商品ID）三选一。
+   * 对应三个不同 API 端点：queryByVid / queryBySku / getInventoryByPid。
+   */
+  if (!args.vid && !args.sku && !args.pid) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 vid、sku 或 pid 中的任意一个参数 / Please provide one of: vid, sku, or pid.' }],
+      isError: true,
+    };
+  }
+
+  let endpoint: string;
+  let params: Record<string, string>;
+
+  if (args.vid) {
+    endpoint = ENDPOINTS.product.stockQueryByVid;
+    params = { vid: String(args.vid) };
+  } else if (args.sku) {
+    endpoint = ENDPOINTS.product.stockQueryBySku;
+    params = { sku: String(args.sku) };
+  } else {
+    endpoint = ENDPOINTS.product.stockGetInventoryByPid;
+    params = { pid: String(args.pid) };
+  }
+
+  const response = await httpClient.request(endpoint, { method: 'GET', params, tier: 'read' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `库存查询失败 / Inventory query failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleGetMyProducts(args: Record<string, unknown>) {
+  /**
+   * @note 纠正(13次): 新增 get_my_products 工具，对应 GET /product/myProduct/query。
+   * 查询用户已添加到「我的商品」选品列表，不同于全量搜索。
+   */
+  const params: Record<string, string> = {};
+  if (args.keyword) params.keyword = String(args.keyword);
+  if (args.categoryId) params.categoryId = String(args.categoryId);
+  if (args.startAt) params.startAt = String(args.startAt);
+  if (args.endAt) params.endAt = String(args.endAt);
+  if (args.isListed !== undefined) params.isListed = String(args.isListed);
+  if (args.pageNum) params.pageNum = String(args.pageNum);
+  const pageSize = Math.min(Number(args.pageSize) || 20, 200);
+  params.pageSize = String(pageSize);
+
+  const response = await httpClient.request(ENDPOINTS.product.myProductQuery, { method: 'GET', params, tier: 'read' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `查询我的商品失败 / Get my products failed: ${response.message}` }], isError: true };
+  }
+
+  const config = getEnvConfig();
+  const data = response.data as { content?: Array<Record<string, unknown>> } | null;
+  if (data?.content && Array.isArray(data.content)) {
+    data.content.forEach(item => {
+      const pid = String(item.productId || '');
+      const name = String(item.nameEn || '');
+      if (pid) item.productUrl = getProductUrl(config.webBase, pid, name);
+    });
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleGetProductVariants(args: Record<string, unknown>) {
+  /**
+   * @note 纠正(13次): 新增 get_product_variants 工具，对应 GET /product/variant/query。
+   * 查询商品的所有变体（颜色/尺码/规格），pid/productSku/variantSku 三选一。
+   */
+  if (!args.pid && !args.productSku && !args.variantSku) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 pid、productSku 或 variantSku 中的任意一个 / Please provide pid, productSku, or variantSku.' }],
+      isError: true,
+    };
+  }
+  const params: Record<string, string> = {};
+  if (args.pid) params.pid = String(args.pid);
+  if (args.productSku) params.productSku = String(args.productSku);
+  if (args.variantSku) params.variantSku = String(args.variantSku);
+  if (args.countryCode) params.countryCode = String(args.countryCode);
+
+  const response = await httpClient.request(ENDPOINTS.product.variantQuery, { method: 'GET', params, tier: 'read' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `查询变体失败 / Get variants failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleCreateSourcing(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第14次): create_sourcing，POST /product/sourcing/create。
+   * productName 和 productImage 为必填，其余选填。
+   * 返回 cjSourcingId 供后续 query_sourcing 查询。
+   */
+  if (!args.productName || !args.productImage) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 productName 和 productImage / Please provide productName and productImage.' }],
+      isError: true,
+    };
+  }
+  const body: Record<string, unknown> = {
+    productName: String(args.productName),
+    productImage: String(args.productImage),
+  };
+  if (args.productUrl) body.productUrl = String(args.productUrl);
+  if (args.remark) body.remark = String(args.remark);
+  if (args.price) body.price = String(args.price);
+  if (args.thirdProductId) body.thirdProductId = String(args.thirdProductId);
+  if (args.thirdVariantId) body.thirdVariantId = String(args.thirdVariantId);
+  if (args.thirdProductSku) body.thirdProductSku = String(args.thirdProductSku);
+
+  const response = await httpClient.request(ENDPOINTS.product.sourcingCreate, { body, tier: 'write' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `创建采购需求失败 / Create sourcing failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: `✅ 采购需求已提交 / Sourcing request submitted:\n${JSON.stringify(response.data, null, 2)}` }] };
+}
+
+async function handleQuerySourcing(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第14次): query_sourcing，POST /product/sourcing/query。
+   * 参数 sourceIds 为采购ID数组（从 create_sourcing 获取）。
+   */
+  if (!Array.isArray(args.sourceIds) || args.sourceIds.length === 0) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 sourceIds 数组 / Please provide sourceIds array.' }],
+      isError: true,
+    };
+  }
+  const response = await httpClient.request(ENDPOINTS.product.sourcingQuery, {
+    body: { sourceIds: args.sourceIds },
+    tier: 'read',
+  });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `查询采购需求失败 / Query sourcing failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleListProductConnections(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第14次): list_product_connections，GET /product/conn/connection。
+   * 查询店铺商品连接记录列表，支持多种筛选条件。
+   */
+  const params: Record<string, string> = {};
+  if (args.shopId) params.shopId = String(args.shopId);
+  if (args.platformProductId) params.platformProductId = String(args.platformProductId);
+  if (args.platformVariantId) params.platformVariantId = String(args.platformVariantId);
+  params.page = String(args.page || 1);
+  params.pageSize = String(Math.min(Number(args.pageSize) || 10, 100));
+
+  const response = await httpClient.request(ENDPOINTS.product.connList, { method: 'GET', params, tier: 'read' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `查询商品连接失败 / List connections failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleGetProductReviews(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第14次): get_product_reviews，GET /product/productComments（v2新版接口）。
+   * pid 为必填，score 可按评分筛选，支持分页。
+   */
+  if (!args.pid) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 pid（商品ID）/ Please provide pid (product ID).' }],
+      isError: true,
+    };
+  }
+  const params: Record<string, string> = { pid: String(args.pid) };
+  if (args.score) params.score = String(args.score);
+  params.pageNum = String(args.pageNum || 1);
+  params.pageSize = String(Math.min(Number(args.pageSize) || 20, 50));
+
+  const response = await httpClient.request(ENDPOINTS.product.productComments, { method: 'GET', params, tier: 'read' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `查询评价失败 / Get reviews failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+}
+
+async function handleCreateProductConnection(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第15次): create_product_connection，POST /product/conn/connection。
+   * ⚠️ 敏感操作：建立CJ商品与平台商品的绑定关系，影响订单自动匹配。
+   */
+  if (!args.cjProductId || !args.platformProductId || args.defaultArea === undefined || !args.logistics || !Array.isArray(args.variantList) || args.variantList.length === 0) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 cjProductId、platformProductId、defaultArea、logistics 和 variantList（至少一项）/ Please provide required params.' }],
+      isError: true,
+    };
+  }
+  const body: Record<string, unknown> = {
+    cjProductId: String(args.cjProductId),
+    platformProductId: String(args.platformProductId),
+    defaultArea: Number(args.defaultArea),
+    logistics: String(args.logistics),
+    variantList: args.variantList,
+  };
+  if (args.shopId) body.shopId = String(args.shopId);
+  if (args.sourceCountryCode) body.sourceCountryCode = String(args.sourceCountryCode);
+  if (args.targetCountryCode) body.targetCountryCode = String(args.targetCountryCode);
+
+  const response = await httpClient.request(ENDPOINTS.product.connList, { body, tier: 'write' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `创建商品连接失败 / Create product connection failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: `✅ 商品连接已建立 / Product connection created.\n${JSON.stringify(response.data, null, 2)}` }] };
+}
+
+async function handleDisconnectProduct(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第15次): disconnect_product，DELETE /product/conn/connection。
+   * ⚠️ 敏感操作：断开CJ商品与平台商品绑定，影响订单自动匹配。
+   */
+  if (!args.platformProductId) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 platformProductId / Please provide platformProductId.' }],
+      isError: true,
+    };
+  }
+  const params: Record<string, string> = {
+    platformProductId: String(args.platformProductId),
+  };
+  if (args.shopId) params.shopId = String(args.shopId);
+  if (args.platformVariantId) params.platformVariantId = String(args.platformVariantId);
+
+  const response = await httpClient.request(ENDPOINTS.product.connList, { method: 'DELETE', params, tier: 'write' });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `断开商品连接失败 / Disconnect product failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: `✅ 商品连接已断开 / Product disconnected.\n${JSON.stringify(response.data, null, 2)}` }] };
+}
+
+async function handleSearchProductsByImage(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第15次): search_products_by_image，POST /product/queryProductsByImage。
+   * ⚠️ 此API仅限白名单用户，非白名单账户会返回权限错误。
+   */
+  if (!args.imageUrl) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 imageUrl / Please provide imageUrl.' }],
+      isError: true,
+    };
+  }
+  const response = await httpClient.request(ENDPOINTS.product.imageSearch, {
+    body: { imageUrl: String(args.imageUrl) },
+    tier: 'read',
+  });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `以图搜货失败 / Image search failed: ${response.message}\n⚠️ 如果是权限错误，此API需要申请白名单才可使用 / If permission error, this API requires whitelist access.` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
 }

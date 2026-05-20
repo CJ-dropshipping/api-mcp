@@ -15,6 +15,7 @@ import { orderTools, handleOrderTool } from './order.tool.js';
 import { disputeTools, handleDisputeTool } from './dispute.tool.js';
 import { shopTools, handleShopTool } from './shop.tool.js';
 import { stockTools, handleStockTool } from './stock.tool.js';
+import { webhookTools, handleWebhookTool } from './webhook.tool.js';
 import { logger, isDebugMode } from '../../utils/logger.js';
 import { rateLimiter, QuotaExceededError } from '../../api-client/rate-limiter.js';
 import { isSensitiveTool, getConfirmationPrompt } from '../../utils/sensitive-ops.js';
@@ -61,6 +62,10 @@ export function registerTools(): void {
   for (const tool of stockTools) {
     toolRegistry.set(tool.name, handleStockTool);
   }
+  // Webhook域
+  for (const tool of webhookTools) {
+    toolRegistry.set(tool.name, handleWebhookTool);
+  }
   // 导航域
   for (const tool of navigateTools) {
     toolRegistry.set(tool.name, handleNavigateTool);
@@ -70,7 +75,7 @@ export function registerTools(): void {
   staticTools = [
     ...productTools, ...logisticsTools,
     ...orderTools, ...disputeTools,
-    ...shopTools, ...stockTools, ...navigateTools,
+    ...shopTools, ...stockTools, ...webhookTools, ...navigateTools,
   ];
 }
 

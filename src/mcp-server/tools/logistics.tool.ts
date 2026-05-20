@@ -1,7 +1,7 @@
 /**
  * @fileoverview 物流运费 MCP Tools
  * - calculate_freight: 运费试算 (对应 /logistic/freightCalculate)
- * - get_logistics_timeliness: 物流时效查询 (对应 /logistic/logisticsTimeliness)
+ * - get_logistics_timeliness: 物流时效查询 (对应 /logistic/freightCalculateTip)
  *
  * 描述参考 mycj-react 中运费计算器、物流方式选择的业务场景
  */
@@ -86,6 +86,31 @@ export const logisticsTools: Tool[] = [
       required: ['trackNumbers'],
     },
   },
+  {
+    name: 'calculate_freight_tip',
+    description: [
+      '运费试算增强版，支持按平台（Shopify/WooCommerce等）过滤的运费内容试算。',
+      '触发场景：「计算运费（Shopify平台）」「查看某平台的运费选项」「calculate freight tip」「某平台的适用运费方式」。',
+      '必填参数：srcAreaCode（发货国）、destAreaCode（目的国）。',
+      '选填参数：skuList（SKU列表）、platform（平台名称 Shopify/WooCommerce等）、zip（邮编）、totalGoodsAmount（货物总实际价値）。',
+    ].join(' '),
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        srcAreaCode: { type: 'string', description: '发货国家代码（必填，如 CN）/ Origin country code (required, e.g. CN)' },
+        destAreaCode: { type: 'string', description: '目的地家代码（必填，如 US）/ Destination country code (required, e.g. US)' },
+        skuList: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'SKU列表（可选）/ SKU list (optional)',
+        },
+        platform: { type: 'string', description: '平台名称（可选，如 Shopify）/ Platform name (optional, e.g. Shopify)' },
+        zip: { type: 'string', description: '目的地邮编（可选）/ Destination zip code (optional)' },
+        totalGoodsAmount: { type: 'number', description: '货物实际价値（可选）/ Total goods amount (optional)' },
+      },
+      required: ['srcAreaCode', 'destAreaCode'],
+    },
+  },
 ];
 
 export async function handleLogisticsTool(
@@ -111,6 +136,8 @@ export async function handleLogisticsTool(
         return await handleLogisticsTimeliness(args);
       case 'get_tracking_info':
         return await handleGetTrackingInfo(args);
+      case 'calculate_freight_tip':
+        return await handleCalculateFreightTip(args);
       default:
         return { content: [{ type: 'text', text: `Unknown logistics tool: ${name}` }], isError: true };
     }
@@ -146,15 +173,19 @@ async function handleCalculateFreight(args: Record<string, unknown>) {
 
 async function handleLogisticsTimeliness(args: Record<string, unknown>) {
   /**
-   * @note 纠正: logistic/logisticsTimeliness 是 GET 接口
-   * 参数名是 srcAreaCode / destAreaCode (非 startCountryCode / endCountryCode)
+   * @note 纠正(16次): /logistic/logisticsTimeliness 不存在于API文档。
+   * 改用 POST /logistic/freightCalculateTip，传入 srcAreaCode/destAreaCode 查询时效信息。
+   * freightCalculateTip 支持仅传国家代码（不强制要求 skuList），返回可用物流方案及时效。
    */
-  const response = await httpClient.request(ENDPOINTS.logistic.logisticsTimeliness, {
-    method: 'GET',
-    params: {
+  const body: Record<string, unknown> = {
+    reqDTOS: [{
       srcAreaCode: String(args.startCountryCode || 'CN'),
       destAreaCode: String(args.endCountryCode),
-    },
+    }],
+  };
+
+  const response = await httpClient.request(ENDPOINTS.logistic.freightCalculateTip, {
+    body,
     tier: 'read',
   });
 
@@ -199,4 +230,41 @@ async function handleGetTrackingInfo(args: Record<string, unknown>) {
   }
 
   return { content: [{ type: 'text', text: JSON.stringify(data.data, null, 2) }] };
+}
+
+async function handleCalculateFreightTip(args: Record<string, unknown>) {
+  /**
+   * @note 新增(第15次): calculate_freight_tip，POST /logistic/freightCalculateTip。
+   * 运费试算增强版，支持按平台过滤和SKU传参。
+   * API 需要 reqDTOS 数组包装。
+   */
+  if (!args.srcAreaCode || !args.destAreaCode) {
+    return {
+      content: [{ type: 'text', text: '❌ 请提供 srcAreaCode 和 destAreaCode / Please provide srcAreaCode and destAreaCode.' }],
+      isError: true,
+    };
+  }
+  const reqDTO: Record<string, unknown> = {
+    srcAreaCode: String(args.srcAreaCode),
+    destAreaCode: String(args.destAreaCode),
+  };
+  if (Array.isArray(args.skuList) && args.skuList.length > 0) {
+    reqDTO.skuList = args.skuList;
+    reqDTO.freightTrialSkuList = args.skuList.map((sku: unknown) => ({
+      sku: String(sku),
+      skuQuantity: 1,
+    }));
+  }
+  if (args.platform) reqDTO.platforms = [String(args.platform)];
+  if (args.zip) reqDTO.zip = String(args.zip);
+  if (args.totalGoodsAmount !== undefined) reqDTO.totalGoodsAmount = Number(args.totalGoodsAmount);
+
+  const response = await httpClient.request(ENDPOINTS.logistic.freightCalculateTip, {
+    body: { reqDTOS: [reqDTO] },
+    tier: 'read',
+  });
+  if (!isApiSuccess(response)) {
+    return { content: [{ type: 'text', text: `运费试算失败 / Freight calculate tip failed: ${response.message}` }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
 }

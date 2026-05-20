@@ -16,6 +16,13 @@ const SENSITIVE_TOOLS = new Set([
   'create_dispute',     // 发起纠纷
   'cancel_dispute',     // 取消纠纷 (不可撤销)
   'logout',            // 登出 (会清除会话)
+  'confirm_order',      // 确认订单付款 (涉及资金，不可撤销)
+  'delete_order',       // 删除订单 (不可恢复)
+  'confirm_dispute',    // 确认纠纷处理结果 (提交后不可更改)
+  'save_product_to_shop', // 保存商品到店铺（影响店铺商品数据）
+  'create_product_connection', // 建立商品连接（影响订单自动匹配）
+  'disconnect_product',   // 断开商品连接（可能影响现有订单匹配）
+  'configure_webhook',    // 配置Webhook（影响通知推送设置）
 ]);
 
 /**
@@ -36,6 +43,13 @@ export function getConfirmationPrompt(toolName: string, args: Record<string, unk
     create_dispute: '⚠️ 即将发起纠纷 / About to create a dispute',
     cancel_dispute: '⚠️ 即将取消纠纷（不可撤销）/ About to cancel dispute (irreversible)',
     logout: '🔒 即将登出当前账号 / About to logout',
+    confirm_order: '💳 即将确认订单付款（涉及资金，操作不可撤销）/ About to confirm order payment (involves funds, irreversible)',
+    delete_order: '🗑️ 即将删除订单（不可恢复）/ About to delete order (cannot be undone)',
+    confirm_dispute: '⚖️ 即将提交纠纷确认信息（提交后不可更改）/ About to submit dispute confirmation (cannot be changed after submission)',
+    save_product_to_shop: '🏪 即将保存商品到CJ店铺系统（将修改店铺商品数据）/ About to save product to CJ store system (modifies store product data)',
+    create_product_connection: '🔗 即将创建商品连接（将CJ商品与平台商品绑定，影响订单自动匹配）/ About to create product connection (binds CJ product to platform product)',
+    disconnect_product: '✂️ 即将断开商品连接（移除平台商品与CJ商品的绑定，可能影响现有订单自动匹配）/ About to disconnect product (removes binding, may affect order matching)',
+    configure_webhook: '🔔 即将修改Webhook通知设置（将影响所有事件通知的推送目标URL）/ About to configure webhook settings (affects all event notification URLs)',
   };
 
   const desc = descriptions[toolName] || `⚠️ 即将执行: ${toolName}`;

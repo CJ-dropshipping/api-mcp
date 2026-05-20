@@ -20,18 +20,23 @@ export const ENDPOINTS = {
     listV2: '/product/listV2',
     getCategory: '/product/getCategory',
     globalWarehouseList: '/product/globalWarehouseList',
-  },
-
-  // === Category ===
-  category: {
-    getCategoryTree: '/category/getCategoryTree',
+    variantQuery: '/product/variant/query',
+    myProductQuery: '/product/myProduct/query',
+    stockQueryByVid: '/product/stock/queryByVid',
+    stockQueryBySku: '/product/stock/queryBySku',
+    stockGetInventoryByPid: '/product/stock/getInventoryByPid',
+    sourcingCreate: '/product/sourcing/create',
+    sourcingQuery: '/product/sourcing/query',
+    connList: '/product/conn/connection',
+    productComments: '/product/productComments',
+    imageSearch: '/product/queryProductsByImage',
   },
 
   // === Logistic ===
   logistic: {
     freightCalculate: '/logistic/freightCalculate',
-    logisticsTimeliness: '/logistic/logisticsTimeliness',
     trackInfo: '/logistic/trackInfo',
+    freightCalculateTip: '/logistic/freightCalculateTip',
   },
 
   // === Shopping / Order ===
@@ -44,11 +49,12 @@ export const ENDPOINTS = {
     mergeOrderSubmit: '/shopping/mergeOrder/submitMergeOrderBatchV3',
     mergeOrderSubmitProgress: '/shopping/mergeOrder/submitProgress',
     mergeOrderSubmitResult: '/shopping/mergeOrder/submitResult',
-    getPayOrderListV3: '/shopping/directOrder/getPayOrderListV3',
     listOrder: '/shopping/order/list',
     getOrderDetail: '/shopping/order/getOrderDetail',
-    queryOrderInfo: '/shopping/order/queryOrderInfo',
     getBalance: '/shopping/pay/getBalance',
+    deleteOrder: '/shopping/order/deleteOrder',
+    confirmOrder: '/shopping/order/confirmOrder',
+    queryCogs: '/shopping/order/queryCogsBasicDataOrderInfoList',
   },
 
   // === Disputes ===
@@ -56,12 +62,33 @@ export const ENDPOINTS = {
     create: '/disputes/create',
     cancel: '/disputes/cancel',
     getDisputeList: '/disputes/getDisputeList',
+    getDisputeDetail: '/disputes/getDisputeDetail',
     disputeConfirmInfo: '/disputes/disputeConfirmInfo',
   },
 
   // === Shop ===
   shop: {
     getShops: '/shop/getShops',
+  },
+
+  // === Setting ===
+  setting: {
+    get: '/setting/get',
+  },
+
+  // === Warehouse ===
+  warehouse: {
+    detail: '/warehouse/detail',
+  },
+
+  // === Store ===
+  store: {
+    saveProduct: '/store/product/saveProduct',
+  },
+
+  // === Webhook ===
+  webhook: {
+    set: '/webhook/set',
   },
 
   // === Stock / Warehouse ===
@@ -72,8 +99,4 @@ export const ENDPOINTS = {
     querySkuListByProductId: '/product/stock/privateInventory/querySkuListByProductId',
   },
 
-  // === Product Listed (受益国) ===
-  productListed: {
-    getReceiverCountryInfo: '/product/listed/getReceiverCountryInfo',
-  },
 } as const;

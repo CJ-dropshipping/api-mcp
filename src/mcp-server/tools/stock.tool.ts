@@ -69,6 +69,34 @@ export const stockTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'query_sku_detail_by_sku',
+    description:
+      '通过变体SKU精确查询私有库存的SKU明细信息（入库批次、备注等）。' +
+      '触发场景：「查一下 SKU CJXXX-Black 的私有库存明细」「这个变体我备了多少货」。' +
+      '⚠️ 查询 CJ 公开库存请使用 query_cj_inventory。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        variantSku: { type: 'string', description: '变体SKU编码（必填）/ Variant SKU code (required)' },
+      },
+      required: ['variantSku'],
+    },
+  },
+  {
+    name: 'get_storage_info',
+    description:
+      '查询指定仓库的详情信息（地址、支持的物流品牌、是否支持自提等）。' +
+      '触发场景：「这个仓库的地址是什么」「仓库支持哪些物流」「查一下仓库详情」。' +
+      '需要提供 storageId（仓库ID），可通过 get_warehouses 工具获取仓库列表并得到 ID。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        storageId: { type: 'string', description: '仓库ID（必填），可通过 get_warehouses 获取 / Storage ID (required), obtain from get_warehouses' },
+      },
+      required: ['storageId'],
+    },
+  },
 ];
 
 export async function handleStockTool(
@@ -148,6 +176,43 @@ export async function handleStockTool(
         });
         if (!isApiSuccess(response)) {
           return { content: [{ type: 'text', text: `查询SKU明细失败 / Query SKU details failed: ${response.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+      }
+
+      case 'query_sku_detail_by_sku': {
+        /**
+         * @note 纠正(13次): 新增 query_sku_detail_by_sku，按变体SKU精确查询私有库存明细。
+         * 对应已注册端点 ENDPOINTS.stock.querySkuDetailListBySku。
+         */
+        if (!args.variantSku) {
+          return { content: [{ type: 'text', text: '❌ 请提供 variantSku 参数 / Please provide variantSku.' }], isError: true };
+        }
+        const response = await httpClient.request(ENDPOINTS.stock.querySkuDetailListBySku, {
+          body: { variantSku: String(args.variantSku) },
+          tier: 'read',
+        });
+        if (!isApiSuccess(response)) {
+          return { content: [{ type: 'text', text: `按SKU查询明细失败 / Query SKU detail by sku failed: ${response.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+      }
+
+      case 'get_storage_info': {
+        /**
+         * @note 纠正(13次): 新增 get_storage_info，查询指定仓库详情。
+         * 对应 GET /warehouse/detail?id=storageId。
+         */
+        if (!args.storageId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 storageId 参数，可通过 get_warehouses 获取 / Please provide storageId, obtainable via get_warehouses.' }], isError: true };
+        }
+        const response = await httpClient.request(ENDPOINTS.warehouse.detail, {
+          method: 'GET',
+          params: { id: String(args.storageId) },
+          tier: 'read',
+        });
+        if (!isApiSuccess(response)) {
+          return { content: [{ type: 'text', text: `查询仓库详情失败 / Get storage info failed: ${response.message}` }], isError: true };
         }
         return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
       }

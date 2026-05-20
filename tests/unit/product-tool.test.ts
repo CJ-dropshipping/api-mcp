@@ -52,10 +52,20 @@ import { handleProductTool, productTools } from '../../src/mcp-server/tools/prod
 describe('product.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了4个tools（search_products, get_category_tree, get_warehouses, get_product_detail）', () => {
-    expect(productTools).toHaveLength(4);
+  it('注册了14个tools（search_products, get_category_tree, get_warehouses, get_product_detail, query_cj_inventory, get_my_products, get_product_variants, create_sourcing, query_sourcing, list_product_connections, get_product_reviews, create_product_connection, disconnect_product, search_products_by_image）', () => {
+    expect(productTools).toHaveLength(14);
     expect(productTools.map(t => t.name)).toContain('search_products');
     expect(productTools.map(t => t.name)).toContain('get_product_detail');
+    expect(productTools.map(t => t.name)).toContain('query_cj_inventory');
+    expect(productTools.map(t => t.name)).toContain('get_my_products');
+    expect(productTools.map(t => t.name)).toContain('get_product_variants');
+    expect(productTools.map(t => t.name)).toContain('create_sourcing');
+    expect(productTools.map(t => t.name)).toContain('query_sourcing');
+    expect(productTools.map(t => t.name)).toContain('list_product_connections');
+    expect(productTools.map(t => t.name)).toContain('get_product_reviews');
+    expect(productTools.map(t => t.name)).toContain('create_product_connection');
+    expect(productTools.map(t => t.name)).toContain('disconnect_product');
+    expect(productTools.map(t => t.name)).toContain('search_products_by_image');
   });
 
   it('search_products 为 content[].productList[] 中的每个商品注入 productUrl', async () => {

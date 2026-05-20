@@ -89,6 +89,34 @@ export const disputeTools: Tool[] = [
       required: ['orderId', 'productInfoList'],
     },
   },
+  {
+    name: 'confirm_dispute',
+    description:
+      '⚠️【敏感操作 - 需用户确认】提交纠纷确认信息，操作提交后不可更改。\n' +
+      '触发场景：「确认这个纠纷」「同意纠纷处理结果」「confirm dispute」。\n' +
+      '⚠️ AI 必须先调用 get_dispute_detail 获取 productInfoList，展示结果给用户确认后再调用此工具。\n' +
+      '参数： orderId（CJ订单号，必填）、productInfoList（商品列表、必填）。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: { type: 'string', description: 'CJ订单号（必填）/ CJ Order ID (required)' },
+        productInfoList: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              lineItemId: { type: 'string', description: '行项目ID / Line item ID' },
+              quantity: { type: 'number', description: '数量 / Quantity' },
+              price: { type: 'number', description: '单价USD / Unit price in USD' },
+            },
+            required: ['lineItemId', 'quantity'],
+          },
+          description: '商品信息列表（从 get_dispute_detail 结果获取）/ Product info list (from get_dispute_detail result)',
+        },
+      },
+      required: ['orderId', 'productInfoList'],
+    },
+  },
 ];
 
 export async function handleDisputeTool(
@@ -158,6 +186,29 @@ export async function handleDisputeTool(
           return { content: [{ type: 'text', text: `查询纠纷详情失败 / Get dispute detail failed: ${detailResp.message}` }], isError: true };
         }
         return { content: [{ type: 'text', text: JSON.stringify(detailResp.data, null, 2) }] };
+      }
+
+      case 'confirm_dispute': {
+        /**
+         * @note 纠正(13次): 新增 confirm_dispute 工具，提交纠纷确认信息。
+         * ⚠️ 敏感操作：确认纠纷处理结果，提交后不可更改。
+         * sensitive-ops.ts 已注册，AI 调用前会看到确认提示。
+         * 参数：orderId（必填）、productInfoList（必填，含 lineItemId/quantity/price）。
+         */
+        if (!args.orderId || !Array.isArray(args.productInfoList) || args.productInfoList.length === 0) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId 和 productInfoList / Please provide orderId and productInfoList.' }], isError: true };
+        }
+        const confirmResp = await httpClient.request(ENDPOINTS.disputes.disputeConfirmInfo, {
+          body: {
+            orderId: String(args.orderId),
+            productInfoList: args.productInfoList,
+          },
+          tier: 'write',
+        });
+        if (!isApiSuccess(confirmResp)) {
+          return { content: [{ type: 'text', text: `纠纷确认失败 / Confirm dispute failed: ${confirmResp.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: `✅ 纠纷确认已提交 / Dispute confirmation submitted:\n${JSON.stringify(confirmResp.data, null, 2)}` }] };
       }
 
       default:
