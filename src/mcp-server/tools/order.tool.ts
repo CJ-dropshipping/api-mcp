@@ -28,17 +28,109 @@ export const orderTools: Tool[] = [
   {
     name: 'create_order',
     description:
-      '创建订单，从购物车或直接下单。需要收货地址和商品信息 / ' +
-      'Create order from cart or direct purchase. Requires shipping address and product info.',
+      '⚠️【创建订单 - 必须一次性提供所有必填字段，字段名必须与 schema 完全一致，不可自行重命名】\n' +
+      '调用前请确认已知以下全部信息，如有缺失须先向用户询问：\n' +
+      '  orderNumber（自定义唯一订单号）、shippingCustomerName（收件人姓名）、\n' +
+      '  shippingPhone（收件人电话）、shippingCountry（收件国家全称）、\n' +
+      '  shippingCountryCode（2位国家代码）、shippingProvince（省/州）、\n' +
+      '  shippingCity（城市）、shippingAddress（街道地址）、shippingZip（邮编）、\n' +
+      '  logisticName（物流名称，须先通过 calculate_freight 获取）、\n' +
+      '  fromCountryCode（发货国代码，通常 "CN"）、products[{vid, quantity}]\n' +
+      '成功后将返回订单ID和支付链接。\n\n' +
+      'Create order (V2). All required field names MUST match exactly as defined in the schema properties.\n' +
+      'DO NOT rename fields. Collect ALL required fields before calling.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         orderInfo: {
           type: 'object',
-          description: '订单信息（含商品、地址、物流方式等）/ Order info (products, address, logistics)',
+          description: '订单参数，字段名必须与下方 properties 完全一致 / Order params — field names must match properties exactly',
+          properties: {
+            orderNumber: { type: 'string', description: '唯一订单号（必填）/ Unique order number (required)' },
+            shippingCustomerName: { type: 'string', description: '收件人姓名（必填）/ Recipient name (required)' },
+            shippingPhone: { type: 'string', description: '收件人电话 / Recipient phone' },
+            shippingCountry: { type: 'string', description: '收件国家全称，如 "United States"（必填）/ Full country name (required)' },
+            shippingCountryCode: { type: 'string', description: '2位国家代码，如 "US"（必填）/ 2-letter country code (required)' },
+            shippingProvince: { type: 'string', description: '省/州（必填）/ Province or state (required)' },
+            shippingCity: { type: 'string', description: '城市（必填）/ City (required)' },
+            shippingAddress: { type: 'string', description: '街道地址（必填）/ Street address (required)' },
+            shippingZip: { type: 'string', description: '邮编 / ZIP code' },
+            logisticName: { type: 'string', description: '物流名称（必填），来自 calculate_freight 返回值 / Logistics name from calculate_freight (required)' },
+            fromCountryCode: { type: 'string', description: '发货国代码（必填），通常为 "CN" / Source country code, usually "CN" (required)' },
+            products: {
+              type: 'array',
+              description: '商品列表（必填）/ Product list (required)',
+              items: {
+                type: 'object',
+                properties: {
+                  vid: { type: 'string', description: '变体ID / Variant ID' },
+                  quantity: { type: 'number', description: '数量 / Quantity' },
+                },
+                required: ['vid', 'quantity'],
+              },
+            },
+          },
+          required: ['orderNumber', 'shippingCustomerName', 'shippingCountry', 'shippingCountryCode', 'shippingProvince', 'shippingCity', 'shippingAddress', 'logisticName', 'fromCountryCode', 'products'],
         },
       },
       required: ['orderInfo'],
+    },
+  },
+  {
+    name: 'submit_order_to_cart',
+    description:
+      '⚠️【敏感操作】从已创建的订单ID继续后续流程：加购物车→确认购物车→生成支付单，返回支付链接。\n' +
+      '适用场景：create_order 成功返回 orderId 后，用此工具继续完成支付流程。\n' +
+      '执行步骤：addCart(orderId) → addCartConfirm(orderId) → saveGenerateParentOrder(shipmentsId) → 返回支付链接\n\n' +
+      'Submit order to cart and generate payment link from an existing orderId.\n' +
+      'Use after create_order succeeds. Runs: addCart → addCartConfirm → saveGenerateParentOrder.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: {
+          type: 'string',
+          description: 'createOrderV2 返回的 CJ 订单ID（必填）/ CJ order ID from createOrderV2 (required)',
+        },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'confirm_cart_and_pay',
+    description:
+      '⚠️【敏感操作】从已在购物车中的订单ID继续：确认购物车→生成支付单，返回支付链接。\n' +
+      '适用场景：addCart 已成功，但 addCartConfirm 尚未执行时从此工具继续。\n' +
+      '执行步骤：addCartConfirm(orderId) → saveGenerateParentOrder(shipmentsId) → 返回支付链接\n\n' +
+      'Confirm cart and generate payment from an orderId already in cart.\n' +
+      'Use when addCart succeeded but addCartConfirm not yet called.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: {
+          type: 'string',
+          description: '已加入购物车的 CJ 订单ID（必填）/ CJ order ID already in cart (required)',
+        },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'generate_payment_link',
+    description:
+      '⚠️【敏感操作】从已确认购物车后的 shipmentsId 生成支付单，返回支付链接。\n' +
+      '适用场景：addCartConfirm 成功返回 shipmentsId 后，用此工具生成最终支付链接。\n' +
+      '执行步骤：saveGenerateParentOrder(shipmentsId) → 返回 payId 和支付链接\n\n' +
+      'Generate payment order and return payment URL from a shipmentsId.\n' +
+      'Use after addCartConfirm returns shipmentsId.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        shipmentsId: {
+          type: 'string',
+          description: 'addCartConfirm 返回的 Shipment Order ID（必填）/ shipmentsId from addCartConfirm (required)',
+        },
+      },
+      required: ['shipmentsId'],
     },
   },
   {
@@ -181,6 +273,56 @@ export const orderTools: Tool[] = [
     },
   },
   {
+    name: 'pay_by_balance',
+    description:
+      '⚠️【敏感操作 - 余额支付单个订单，涉及真实资金，不可撤销】\n' +
+      '适用场景：有 orderId（CJ 订单号）时走余额支付（对应 payBalance 接口）。\n' +
+      '⚠️【调用前必须完成以下步骤，否则不得调用本工具】：\n' +
+      '  1. 调用 get_order_detail(orderId) 获取订单金额、状态等信息\n' +
+      '  2. 调用 get_account_balance() 获取账户可用余额\n' +
+      '  3. 向用户完整展示：订单号、订单金额、账户余额，并明确告知「余额支付不可撤销」\n' +
+      '  4. 用户明确回复"确认支付"后，才能调用本工具\n' +
+      '⚠️ PAY WITH BALANCE for single order (orderId). IRREVERSIBLE. MUST first query order detail and balance, show amounts to user, get EXPLICIT confirmation before calling.\n\n' +
+      '注意区分：母单支付（有 payId + shipmentOrderId）请用 pay_by_balance_v2 工具。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: {
+          type: 'string',
+          description: 'CJ 订单号（必填），来自 get_order_detail 或 get_order_list / CJ Order ID (required)',
+        },
+      },
+      required: ['orderId'],
+    },
+  },
+  {
+    name: 'pay_by_balance_v2',
+    description:
+      '⚠️【敏感操作 - 余额支付母单，涉及真实资金，不可撤销】\n' +
+      '适用场景：有 shipmentOrderId + payId（来自 saveGenerateParentOrder）时走余额支付（对应 payBalanceV2 接口）。\n' +
+      '⚠️【调用前必须完成以下步骤，否则不得调用本工具】：\n' +
+      '  1. 确保已将 saveGenerateParentOrder 返回的 paymentInformation（含 actualPayment、freight、commodityTotalAmount）展示给用户\n' +
+      '  2. 调用 get_account_balance() 获取账户可用余额\n' +
+      '  3. 向用户完整展示：实付金额(actualPayment)、运费(freight)、商品总额、账户余额，明确告知「余额支付不可撤销」\n' +
+      '  4. 用户明确回复"确认支付"后，才能调用本工具\n' +
+      '⚠️ PAY WITH BALANCE for parent/shipment order (shipmentOrderId+payId). IRREVERSIBLE. MUST first show paymentInformation amounts and balance to user, get EXPLICIT confirmation before calling.\n\n' +
+      '注意区分：单个订单支付（只有 orderId）请用 pay_by_balance 工具。',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        shipmentOrderId: {
+          type: 'string',
+          description: '母单 Shipment Order ID（必填），来自 saveGenerateParentOrder / Shipment Order ID from saveGenerateParentOrder (required)',
+        },
+        payId: {
+          type: 'string',
+          description: '支付单 ID（必填），来自 saveGenerateParentOrder 返回的 payId / payId from saveGenerateParentOrder (required)',
+        },
+      },
+      required: ['shipmentOrderId', 'payId'],
+    },
+  },
+  {
     name: 'confirm_order',
     description:
       '⚠️【敏感操作 - 需用户确认】确认订单并触发付款，操作不可撤销，将扣除账户余额。\n' +
@@ -255,12 +397,260 @@ export async function handleOrderTool(
           quantity: (args.quantity as number) || 1,
         }, 'write');
 
-      case 'create_order':
-        return await callApi(ENDPOINTS.shopping.createOrder, args.orderInfo as Record<string, unknown>, 'write');
+      case 'create_order': {
+        /**
+         * @note 纠正(17次): 改用 createOrderV2 端点。
+         * @note 纠正(18次): inputSchema 明确声明 orderInfo 子字段名；handler 层字段名容错映射。
+         * @note 纠正(19次): 实现完整下单流程（4步）：
+         *   1. createOrderV2  → 得到 orderId（CJ订单号）
+         *   2. addCart        → 将订单加入购物车
+         *   3. addCartConfirm → 确认购物车，返回 shipmentsId
+         *   4. saveGenerateParentOrder → 生成支付单，返回 payId
+         *   5. 拼接支付链接：{webBase}/mine/payment?pid={payId}
+         */
+        // --- 字段名容错映射 / Field-name normalization ---
+        const rawInfo = (args.orderInfo ?? {}) as Record<string, unknown>;
+
+        // 若 shippingAddress 传成了嵌套对象，把其中子字段展开到顶层
+        if (rawInfo.shippingAddress && typeof rawInfo.shippingAddress === 'object') {
+          const nested = rawInfo.shippingAddress as Record<string, unknown>;
+          const keyMap: Record<string, string> = {
+            receiverName: 'shippingCustomerName', customerName: 'shippingCustomerName',
+            phone: 'shippingPhone', tel: 'shippingPhone',
+            country: 'shippingCountry', countryName: 'shippingCountry',
+            province: 'shippingProvince', state: 'shippingProvince',
+            city: 'shippingCity',
+            address: 'shippingAddress', streetAddress: 'shippingAddress',
+            zip: 'shippingZip', zipCode: 'shippingZip', postalCode: 'shippingZip',
+          };
+          for (const [nestedKey, apiKey] of Object.entries(keyMap)) {
+            if (nested[nestedKey] !== undefined && rawInfo[apiKey] === undefined) {
+              rawInfo[apiKey] = nested[nestedKey];
+            }
+          }
+          if (typeof rawInfo.shippingAddress !== 'string') {
+            delete rawInfo.shippingAddress;
+            if (nested.address !== undefined) rawInfo.shippingAddress = nested.address;
+          }
+        }
+
+        // 顶层字段名映射
+        const topLevelMap: Record<string, string> = {
+          logisticsName: 'logisticName', logistics: 'logisticName',
+          receiverName: 'shippingCustomerName', customerName: 'shippingCustomerName', name: 'shippingCustomerName',
+          phone: 'shippingPhone', tel: 'shippingPhone',
+          country: 'shippingCountry', countryName: 'shippingCountry',
+          countryCode: 'shippingCountryCode', endCountryCode: 'shippingCountryCode',
+          province: 'shippingProvince', state: 'shippingProvince',
+          city: 'shippingCity',
+          address: 'shippingAddress', streetAddress: 'shippingAddress',
+          zip: 'shippingZip', zipCode: 'shippingZip', postalCode: 'shippingZip',
+        };
+        for (const [wrong, correct] of Object.entries(topLevelMap)) {
+          if (rawInfo[wrong] !== undefined && rawInfo[correct] === undefined) {
+            rawInfo[correct] = rawInfo[wrong];
+            delete rawInfo[wrong];
+          }
+        }
+
+        // 若未提供 orderNumber，自动生成一个时间戳订单号
+        if (!rawInfo.orderNumber) {
+          rawInfo.orderNumber = `MCP${Date.now()}`;
+        }
+
+        // Step 1: createOrderV2
+        const createV2Resp = await httpClient.request(ENDPOINTS.shopping.createOrderV2, {
+          body: rawInfo,
+          tier: 'write',
+        });
+        if (!isApiSuccess(createV2Resp)) {
+          return { content: [{ type: 'text', text: `❌ [Step1/createOrderV2] 失败 / Failed: ${createV2Resp.message}` }], isError: true };
+        }
+        const orderData = createV2Resp.data as Record<string, unknown>;
+        const createdOrderId = String(orderData?.orderId ?? '');
+        if (!createdOrderId) {
+          return { content: [{ type: 'text', text: '❌ [Step1/createOrderV2] 返回的 orderId 为空 / orderId is empty' }], isError: true };
+        }
+
+        // Step 2: addCart
+        const addCartResp = await httpClient.request(ENDPOINTS.shopping.addCart, {
+          body: { cjOrderIdList: [createdOrderId] },
+          tier: 'write',
+        });
+        if (!isApiSuccess(addCartResp)) {
+          return { content: [{ type: 'text', text: `❌ [Step2/addCart] 失败 / Failed: ${addCartResp.message}\n订单已创建 orderId: ${createdOrderId}` }], isError: true };
+        }
+
+        // Step 3: addCartConfirm
+        const confirmResp = await httpClient.request(ENDPOINTS.shopping.addCartConfirm, {
+          body: { cjOrderIdList: [createdOrderId] },
+          tier: 'write',
+        });
+        if (!isApiSuccess(confirmResp)) {
+          return { content: [{ type: 'text', text: `❌ [Step3/addCartConfirm] 失败 / Failed: ${confirmResp.message}\n订单已创建 orderId: ${createdOrderId}` }], isError: true };
+        }
+        const confirmData = confirmResp.data as Record<string, unknown>;
+        const shipmentsId = String(confirmData?.shipmentsId ?? '');
+        if (!shipmentsId) {
+          return { content: [{ type: 'text', text: `❌ [Step3/addCartConfirm] 返回 shipmentsId 为空 / shipmentsId is empty\n订单已创建 orderId: ${createdOrderId}` }], isError: true };
+        }
+
+        // Step 4: saveGenerateParentOrder
+        const parentOrderResp = await httpClient.request(ENDPOINTS.shopping.saveGenerateParentOrder, {
+          body: { shipmentOrderId: shipmentsId },
+          tier: 'write',
+        });
+        if (!isApiSuccess(parentOrderResp)) {
+          return { content: [{ type: 'text', text: `❌ [Step4/saveGenerateParentOrder] 失败 / Failed: ${parentOrderResp.message}\n订单已创建 orderId: ${createdOrderId}, shipmentsId: ${shipmentsId}` }], isError: true };
+        }
+        const parentData = parentOrderResp.data as Record<string, unknown>;
+        const payId = String(parentData?.payId ?? '');
+        const webBase = getEnvConfig().webBase;
+        const payUrl = payId ? `${webBase}/mine/payment?pid=${payId}` : '';
+
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `✅ 订单创建并提交成功！/ Order created and submitted!`,
+              `订单ID / Order ID: ${createdOrderId}`,
+              `Shipment ID: ${shipmentsId}`,
+              payUrl ? `💳 支付链接 / Payment URL: ${payUrl}` : '⚠️ payId 为空，请前往 CJ 后台查看支付',
+            ].join('\n'),
+          }],
+        };
+      }
+
+      // ── 中间节点工具：从已有 orderId / shipmentsId 继续支付流程 ──────────────────
+
+      case 'submit_order_to_cart': {
+        // Step2: addCart → Step3: addCartConfirm → Step4: saveGenerateParentOrder
+        if (!args.orderId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId / Please provide orderId.' }], isError: true };
+        }
+        const sotcOrderId = String(args.orderId);
+
+        const sotcCartResp = await httpClient.request(ENDPOINTS.shopping.addCart, {
+          body: { cjOrderIdList: [sotcOrderId] },
+          tier: 'write',
+        });
+        if (!isApiSuccess(sotcCartResp)) {
+          return { content: [{ type: 'text', text: `❌ [addCart] 失败 / Failed: ${sotcCartResp.message}\norderId: ${sotcOrderId}` }], isError: true };
+        }
+
+        const sotcConfirmResp = await httpClient.request(ENDPOINTS.shopping.addCartConfirm, {
+          body: { cjOrderIdList: [sotcOrderId] },
+          tier: 'write',
+        });
+        if (!isApiSuccess(sotcConfirmResp)) {
+          return { content: [{ type: 'text', text: `❌ [addCartConfirm] 失败 / Failed: ${sotcConfirmResp.message}\norderId: ${sotcOrderId}` }], isError: true };
+        }
+        const sotcConfirmData = sotcConfirmResp.data as Record<string, unknown>;
+        const sotcShipmentsId = String(sotcConfirmData?.shipmentsId ?? '');
+        if (!sotcShipmentsId) {
+          return { content: [{ type: 'text', text: `❌ [addCartConfirm] shipmentsId 为空 / shipmentsId is empty\norderId: ${sotcOrderId}` }], isError: true };
+        }
+
+        const sotcParentResp = await httpClient.request(ENDPOINTS.shopping.saveGenerateParentOrder, {
+          body: { shipmentOrderId: sotcShipmentsId },
+          tier: 'write',
+        });
+        if (!isApiSuccess(sotcParentResp)) {
+          return { content: [{ type: 'text', text: `❌ [saveGenerateParentOrder] 失败 / Failed: ${sotcParentResp.message}\norderId: ${sotcOrderId}, shipmentsId: ${sotcShipmentsId}` }], isError: true };
+        }
+        const sotcParentData = sotcParentResp.data as Record<string, unknown>;
+        const sotcPayId = String(sotcParentData?.payId ?? '');
+        const sotcWebBase = getEnvConfig().webBase;
+        const sotcPayUrl = sotcPayId ? `${sotcWebBase}/mine/payment?pid=${sotcPayId}` : '';
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `✅ 购物车提交成功！/ Cart submitted!`,
+              `订单ID / Order ID: ${sotcOrderId}`,
+              `Shipment ID: ${sotcShipmentsId}`,
+              sotcPayUrl ? `💳 支付链接 / Payment URL: ${sotcPayUrl}` : '⚠️ payId 为空，请前往 CJ 后台查看支付',
+            ].join('\n'),
+          }],
+        };
+      }
+
+      case 'confirm_cart_and_pay': {
+        // Step3: addCartConfirm → Step4: saveGenerateParentOrder
+        if (!args.orderId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId / Please provide orderId.' }], isError: true };
+        }
+        const ccpOrderId = String(args.orderId);
+
+        const ccpConfirmResp = await httpClient.request(ENDPOINTS.shopping.addCartConfirm, {
+          body: { cjOrderIdList: [ccpOrderId] },
+          tier: 'write',
+        });
+        if (!isApiSuccess(ccpConfirmResp)) {
+          return { content: [{ type: 'text', text: `❌ [addCartConfirm] 失败 / Failed: ${ccpConfirmResp.message}\norderId: ${ccpOrderId}` }], isError: true };
+        }
+        const ccpConfirmData = ccpConfirmResp.data as Record<string, unknown>;
+        const ccpShipmentsId = String(ccpConfirmData?.shipmentsId ?? '');
+        if (!ccpShipmentsId) {
+          return { content: [{ type: 'text', text: `❌ [addCartConfirm] shipmentsId 为空 / shipmentsId is empty\norderId: ${ccpOrderId}` }], isError: true };
+        }
+
+        const ccpParentResp = await httpClient.request(ENDPOINTS.shopping.saveGenerateParentOrder, {
+          body: { shipmentOrderId: ccpShipmentsId },
+          tier: 'write',
+        });
+        if (!isApiSuccess(ccpParentResp)) {
+          return { content: [{ type: 'text', text: `❌ [saveGenerateParentOrder] 失败 / Failed: ${ccpParentResp.message}\norderId: ${ccpOrderId}, shipmentsId: ${ccpShipmentsId}` }], isError: true };
+        }
+        const ccpParentData = ccpParentResp.data as Record<string, unknown>;
+        const ccpPayId = String(ccpParentData?.payId ?? '');
+        const ccpWebBase = getEnvConfig().webBase;
+        const ccpPayUrl = ccpPayId ? `${ccpWebBase}/mine/payment?pid=${ccpPayId}` : '';
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `✅ 购物车已确认并生成支付单！/ Cart confirmed!`,
+              `订单ID / Order ID: ${ccpOrderId}`,
+              `Shipment ID: ${ccpShipmentsId}`,
+              ccpPayUrl ? `💳 支付链接 / Payment URL: ${ccpPayUrl}` : '⚠️ payId 为空，请前往 CJ 后台查看支付',
+            ].join('\n'),
+          }],
+        };
+      }
+
+      case 'generate_payment_link': {
+        // Step4 only: saveGenerateParentOrder
+        if (!args.shipmentsId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 shipmentsId / Please provide shipmentsId.' }], isError: true };
+        }
+        const gplShipmentsId = String(args.shipmentsId);
+
+        const gplParentResp = await httpClient.request(ENDPOINTS.shopping.saveGenerateParentOrder, {
+          body: { shipmentOrderId: gplShipmentsId },
+          tier: 'write',
+        });
+        if (!isApiSuccess(gplParentResp)) {
+          return { content: [{ type: 'text', text: `❌ [saveGenerateParentOrder] 失败 / Failed: ${gplParentResp.message}\nshipmentsId: ${gplShipmentsId}` }], isError: true };
+        }
+        const gplData = gplParentResp.data as Record<string, unknown>;
+        const gplPayId = String(gplData?.payId ?? '');
+        const gplWebBase = getEnvConfig().webBase;
+        const gplPayUrl = gplPayId ? `${gplWebBase}/mine/payment?pid=${gplPayId}` : '';
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `✅ 支付单生成成功！/ Payment order generated!`,
+              `Shipment ID: ${gplShipmentsId}`,
+              gplPayUrl ? `💳 支付链接 / Payment URL: ${gplPayUrl}` : '⚠️ payId 为空，请前往 CJ 后台查看支付',
+            ].join('\n'),
+          }],
+        };
+      }
 
       case 'merge_orders':
         return await callApi(ENDPOINTS.shopping.mergeOrderAutoMatch, {
-          orderIds: args.orderIds,
         }, 'write');
 
       case 'get_merge_progress':
@@ -380,6 +770,90 @@ export async function handleOrderTool(
           return { content: [{ type: 'text', text: `查询余额失败 / Get balance failed: ${balanceResponse.message}` }], isError: true };
         }
         return { content: [{ type: 'text', text: JSON.stringify(balanceResponse.data, null, 2) }] };
+      }
+
+      case 'pay_by_balance': {
+        /**
+         * @note 第21次提交: 新增 pay_by_balance 工具，对应 POST /shopping/pay/payBalance。
+         * ⚠️ 敏感操作：余额支付单个订单，不可撤销。
+         * description 强制要求 AI 先查 get_order_detail + get_account_balance，
+         * 向用户展示金额并获得明确确认后，才能调用本工具。
+         * sensitive-ops.ts 已注册，提供技术层确认拦截。
+         */
+        if (!args.orderId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 orderId / Please provide orderId.' }], isError: true };
+        }
+        const payBalResp = await httpClient.request(ENDPOINTS.shopping.payBalance, {
+          body: { orderId: String(args.orderId) },
+          tier: 'write',
+        });
+        if (!isApiSuccess(payBalResp)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ 余额支付失败 / Balance payment failed: ${payBalResp.message}\n订单ID / Order ID: ${args.orderId}`,
+            }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              '✅ 余额支付成功！/ Balance payment successful!',
+              `订单ID / Order ID: ${args.orderId}`,
+              '如需查看最新订单状态，请调用 get_order_detail。',
+              'You can call get_order_detail to verify the updated order status.',
+            ].join('\n'),
+          }],
+        };
+      }
+
+      case 'pay_by_balance_v2': {
+        /**
+         * @note 第21次提交: 新增 pay_by_balance_v2 工具，对应 POST /shopping/pay/payBalanceV2。
+         * ⚠️ 敏感操作：余额支付母单（shipmentOrderId + payId），不可撤销。
+         * description 强制要求 AI 先展示 saveGenerateParentOrder 返回的 paymentInformation，
+         * 向用户展示金额并获得明确确认后，才能调用本工具。
+         * sensitive-ops.ts 已注册，提供技术层确认拦截。
+         */
+        if (!args.shipmentOrderId || !args.payId) {
+          return {
+            content: [{
+              type: 'text',
+              text: '❌ 请提供 shipmentOrderId 和 payId / Please provide shipmentOrderId and payId.',
+            }],
+            isError: true,
+          };
+        }
+        const payBalV2Resp = await httpClient.request(ENDPOINTS.shopping.payBalanceV2, {
+          body: {
+            shipmentOrderId: String(args.shipmentOrderId),
+            payId: String(args.payId),
+          },
+          tier: 'write',
+        });
+        if (!isApiSuccess(payBalV2Resp)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ 母单余额支付失败 / Parent order balance payment failed: ${payBalV2Resp.message}\nShipment Order ID: ${args.shipmentOrderId}`,
+            }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              '✅ 母单余额支付成功！/ Parent order balance payment successful!',
+              `Shipment Order ID: ${args.shipmentOrderId}`,
+              `Pay ID: ${args.payId}`,
+              '如需查看支付订单状态，请调用 get_pay_order_list。',
+              'You can call get_pay_order_list to verify the updated payment status.',
+            ].join('\n'),
+          }],
+        };
       }
 
       case 'confirm_order': {

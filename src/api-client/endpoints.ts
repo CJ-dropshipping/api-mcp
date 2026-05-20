@@ -42,7 +42,10 @@ export const ENDPOINTS = {
   // === Shopping / Order ===
   shopping: {
     addCart: '/shopping/order/addCart',
+    addCartConfirm: '/shopping/order/addCartConfirm',
+    saveGenerateParentOrder: '/shopping/order/saveGenerateParentOrder',
     createOrder: '/shopping/order/createOrder',
+    createOrderV2: '/shopping/order/createOrderV2',
     mergeOrderAutoMatch: '/shopping/mergeOrder/autoMatchMergeOrderListV3',
     mergeOrderAutoResult: '/shopping/mergeOrder/autoMergeQueryResult',
     mergeOrderAutoProgress: '/shopping/mergeOrder/autoMergeQueryProgress',
@@ -52,6 +55,8 @@ export const ENDPOINTS = {
     listOrder: '/shopping/order/list',
     getOrderDetail: '/shopping/order/getOrderDetail',
     getBalance: '/shopping/pay/getBalance',
+    payBalance: '/shopping/pay/payBalance',
+    payBalanceV2: '/shopping/pay/payBalanceV2',
     deleteOrder: '/shopping/order/deleteOrder',
     confirmOrder: '/shopping/order/confirmOrder',
     queryCogs: '/shopping/order/queryCogsBasicDataOrderInfoList',

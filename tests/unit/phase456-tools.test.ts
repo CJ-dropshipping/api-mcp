@@ -57,13 +57,18 @@ import { webhookTools } from '../../src/mcp-server/tools/webhook.tool';
 describe('order.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了11个tools', () => {
-    expect(orderTools).toHaveLength(11);
+  it('注册了14个tools', () => {
+    expect(orderTools).toHaveLength(16);
     expect(orderTools.map(t => t.name)).toContain('add_to_cart');
     expect(orderTools.map(t => t.name)).toContain('create_order');
+    expect(orderTools.map(t => t.name)).toContain('submit_order_to_cart');
+    expect(orderTools.map(t => t.name)).toContain('confirm_cart_and_pay');
+    expect(orderTools.map(t => t.name)).toContain('generate_payment_link');
     expect(orderTools.map(t => t.name)).toContain('get_order_list');
     expect(orderTools.map(t => t.name)).toContain('get_order_detail');
     expect(orderTools.map(t => t.name)).toContain('get_account_balance');
+    expect(orderTools.map(t => t.name)).toContain('pay_by_balance');
+    expect(orderTools.map(t => t.name)).toContain('pay_by_balance_v2');
     expect(orderTools.map(t => t.name)).toContain('confirm_order');
     expect(orderTools.map(t => t.name)).toContain('delete_order');
     expect(orderTools.map(t => t.name)).toContain('query_cogs');
@@ -78,10 +83,10 @@ describe('order.tool', () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it('get_pay_order_list 调用正确端点', async () => {
+  it('get_pay_order_list 调用正确端点（已修正为 /shopping/order/list）', async () => {
     await handleOrderTool('get_pay_order_list', { pageNum: 1 });
     expect(mockRequest).toHaveBeenCalledWith(
-      '/shopping/directOrder/getPayOrderListV3',
+      '/shopping/order/list',
       expect.objectContaining({ tier: 'read' })
     );
   });

@@ -65,28 +65,14 @@ export const disputeTools: Tool[] = [
   {
     name: 'get_dispute_detail',
     description:
-      '获取纠纷详情，包含纠纷进度、协商记录、处理结果 / ' +
-      'Get dispute detail including progress, negotiation history, and resolution.',
+      '获取纠纷详情，包含纠纷状态、退款金额、商品信息等 / ' +
+      'Get dispute detail including status, refund amount, and product list.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        orderId: { type: 'string', description: '订单ID / Order ID' },
-        disputeId: { type: 'string', description: '纠纷ID / Dispute ID' },
-        productInfoList: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              lineItemId: { type: 'string', description: '行项目ID / Line item ID' },
-              cjProductId: { type: 'string', description: 'CJ商品ID / CJ product ID' },
-              quantity: { type: 'number', description: '数量 / Quantity' },
-            },
-            required: ['lineItemId', 'cjProductId'],
-          },
-          description: '商品信息列表(从list_disputes结果获取) / Product info list (from list_disputes result)',
-        },
+        disputeId: { type: 'string', description: '纠纷ID（必填，从 list_disputes 获取）/ Dispute ID (required, from list_disputes result)' },
       },
-      required: ['orderId', 'productInfoList'],
+      required: ['disputeId'],
     },
   },
   {
@@ -94,7 +80,7 @@ export const disputeTools: Tool[] = [
     description:
       '⚠️【敏感操作 - 需用户确认】提交纠纷确认信息，操作提交后不可更改。\n' +
       '触发场景：「确认这个纠纷」「同意纠纷处理结果」「confirm dispute」。\n' +
-      '⚠️ AI 必须先调用 get_dispute_detail 获取 productInfoList，展示结果给用户确认后再调用此工具。\n' +
+      '⚠️ AI 必须先展示纠纷详情给用户确认后再调用此工具。获取 lineItemId 请使用 get_order_detail。\n' +
       '参数： orderId（CJ订单号，必填）、productInfoList（商品列表、必填）。',
     inputSchema: {
       type: 'object' as const,
@@ -171,15 +157,15 @@ export async function handleDisputeTool(
 
       case 'get_dispute_detail': {
         /**
-         * @note disputes/disputeConfirmInfo 是 POST 接口
-         * @note 需要 orderId + productInfoList（从 list_disputes 获取）
+         * @note 纠正(16次): 原实现错误地调用 disputeConfirmInfo(POST)。
+         * 实际API是 GET /disputes/getDisputeDetail?disputeId=xxx，只需 disputeId 参数。
          */
-        const detailResp = await httpClient.request(ENDPOINTS.disputes.disputeConfirmInfo, {
-          body: {
-            orderId: String(args.orderId),
-            disputeId: args.disputeId ? String(args.disputeId) : undefined,
-            productInfoList: args.productInfoList,
-          },
+        if (!args.disputeId) {
+          return { content: [{ type: 'text', text: '❌ 请提供 disputeId / Please provide disputeId.' }], isError: true };
+        }
+        const detailResp = await httpClient.request(ENDPOINTS.disputes.getDisputeDetail, {
+          method: 'GET',
+          params: { disputeId: String(args.disputeId) },
           tier: 'read',
         });
         if (!isApiSuccess(detailResp)) {

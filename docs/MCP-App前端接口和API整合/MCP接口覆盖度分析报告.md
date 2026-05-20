@@ -18,24 +18,24 @@
 | logout | auth.tool.ts | - |
 | wait_for_login | auth.tool.ts | - |
 | search_products | product.tool.ts | GET /product/listV2 |
-| get_category_tree | product.tool.ts | GET /category/getCategoryTree |
+| get_category_tree | product.tool.ts | GET /product/getCategory *(已修正，原错误填写为 /category/getCategoryTree)* |
 | get_warehouses | product.tool.ts | GET /product/globalWarehouseList |
 | **get_product_detail** | product.tool.ts | GET /product/query *(新增 2026-05-19)* |
 | query_private_inventory | stock.tool.ts | POST /product/stock/privateInventory/querySpuPage |
 | query_sku_details | stock.tool.ts | POST /product/stock/privateInventory/querySkuListByProductId |
 | query_sku_detail_page | stock.tool.ts | POST /product/stock/privateInventory/querySkuDetailPage |
 | calculate_freight | logistics.tool.ts | POST /logistic/freightCalculate |
-| get_logistics_timeliness | logistics.tool.ts | POST /logistic/logisticsTimeliness |
+| get_logistics_timeliness | logistics.tool.ts | POST /logistic/freightCalculateTip *(已修正，/logistic/logisticsTimeliness 不存在)* |
 | add_to_cart | order.tool.ts | POST /shopping/order/addCart |
 | create_order | order.tool.ts | POST /shopping/order/createOrder |
 | merge_orders | order.tool.ts | POST /shopping/mergeOrder/autoMatchMergeOrderListV3 |
 | get_merge_progress | order.tool.ts | POST /shopping/mergeOrder/autoMergeQueryProgress |
 | get_order_list | order.tool.ts | GET /shopping/order/list |
-| get_pay_order_list | order.tool.ts | GET /shopping/directOrder/getPayOrderListV3 |
+| get_pay_order_list | order.tool.ts | GET /shopping/order/list?status=UNPAID *(已修正，/shopping/directOrder/getPayOrderListV3 不存在)* |
 | create_dispute | dispute.tool.ts | POST /disputes/create |
 | cancel_dispute | dispute.tool.ts | POST /disputes/cancel |
 | list_disputes | dispute.tool.ts | GET /disputes/getDisputeList |
-| get_dispute_detail | dispute.tool.ts | GET /disputes/{disputeId} |
+| get_dispute_detail | dispute.tool.ts | GET /disputes/getDisputeDetail?disputeId=xxx *(已修正，原误用 POST /disputes/disputeConfirmInfo)* |
 | list_shops | shop.tool.ts | GET /shop/getShops |
 | get_authorize_url | shop.tool.ts | GET /authentication/getAuthorizeUrl |
 | open_order_page | navigate.tool.ts | 前端导航 |
@@ -50,8 +50,8 @@
 ### 🔴 优先级 1：用户高频需求，强烈建议实现
 
 #### 1. 查询单个订单详情
-- **API**: GET `/shopping/order/getOrderDetail` 或 `/shopping/order/queryOrderInfo`
-- **端点**: 已在 `ENDPOINTS.shopping.getOrderDetail` 注册，未绑定 MCP 工具
+- **API**: GET `/shopping/order/getOrderDetail`（`/shopping/order/queryOrderInfo` 不存在于API文档，已从 ENDPOINTS 移除）
+- **端点**: 已在 `ENDPOINTS.shopping.getOrderDetail` 注册
 - **触发场景**: 用户说「查一下订单 D202505XXX 的详情」「这个订单发货了吗」「订单的收货地址是什么」
 - **建议工具名**: `get_order_detail`
 - **参数**: `orderId`（必填）
@@ -77,10 +77,11 @@
 - **参数**: `pid` 或 `productSku` 或 `variantSku`，`countryCode`（可选）
 
 #### 5. 确认纠纷
-- **API**: POST `/disputes/disputeConfirmInfo`（端点已注册）
+- **API**: POST `/disputes/disputeConfirmInfo`（端点已注册 ✅）
 - **触发场景**: 「确认这个纠纷」「同意纠纷处理结果」
-- **建议工具名**: `confirm_dispute`
-- **参数**: `disputeId`, `confirmResult`
+- **工具名**: `confirm_dispute`（已实现）
+- **参数**: `orderId`（必填）, `productInfoList`（必填）
+- **注意**: `get_dispute_detail` 使用 GET `/disputes/getDisputeDetail`，`confirm_dispute` 使用 POST `/disputes/disputeConfirmInfo`（两者是不同接口）
 
 ---
 
@@ -168,9 +169,9 @@
 - **API**: POST `/logistic/freightCalculateTip`（logistic.md §1.2）
 - **触发场景**: 已有 calculate_freight，此为补充 tip 版本
 
-#### 21. 收货国家信息
-- **API**: GET `/product/listed/getReceiverCountryInfo`（已在 ENDPOINTS 注册）
-- **触发场景**: 「哪些国家可以发货」
+#### 21. ~~收货国家信息~~（已移除）
+- **API**: ~~GET `/product/listed/getReceiverCountryInfo`~~ — ❌ **该接口不存在于API文档，已从 ENDPOINTS 移除**
+- **触发场景**: 不适用
 
 ---
 
