@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CJ Product List</title>
+  <style>
+    :root {
+      --cj-primary: #FF7700;
+      --cj-primary-light: #FFF1E5;
+      --cj-text: #333333;
+      --cj-text-secondary: #666666;
+      --cj-border: #E0E0E0;
+      --cj-bg: #F5F5F5;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--cj-bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: var(--cj-primary);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header img { width: 24px; height: 24px; background: #fff; border-radius: 5px; }
+    .header h1 { color: #fff; font-size: 15px; font-weight: 600; flex: 1; }
+    .header .badge { background: rgba(255,255,255,0.25); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .product-list { padding: 8px 8px 16px; }
+    .product-card {
+      background: #fff; border-radius: 8px; margin-bottom: 8px;
+      overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      display: flex; flex-direction: column;
+    }
+    .product-card .card-top { display: flex; }
+    .product-card .img-wrap { width: 100px; min-width: 100px; height: 100px; overflow: hidden; background: #f8f8f8; border-radius: 8px 0 0 0; }
+    .product-card .img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+    .product-card .info { flex: 1; padding: 8px 10px 6px; display: flex; flex-direction: column; min-width: 0; }
+    .product-card .name { font-size: 12px; color: var(--cj-text); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; }
+    .product-card .price-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 3px; }
+    .product-card .price { font-size: 16px; font-weight: 700; color: var(--cj-primary); }
+    .product-card .price-label { font-size: 10px; color: #bbb; }
+    .product-card .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 4px; margin-top: 2px; }
+    .product-card .meta-item { font-size: 10px; color: var(--cj-text-secondary); display: flex; align-items: center; gap: 2px; overflow: hidden; }
+    .product-card .meta-item .ml { color: #bbb; white-space: nowrap; }
+    .product-card .meta-item .mv { color: var(--cj-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .product-card .card-footer { padding: 5px 10px 8px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f5f5f5; gap: 6px; }
+    .product-card .sku-tag { font-size: 10px; color: #bbb; background: #f5f5f5; padding: 2px 6px; border-radius: 3px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product-card .type-tag { font-size: 10px; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+    .product-card .type-hot { background: #FFF1E5; color: var(--cj-primary); }
+    .product-card .type-new { background: #F0FFF4; color: #52C41A; }
+    .product-card .link-btn { font-size: 11px; color: var(--cj-primary); background: var(--cj-primary-light); border: none; padding: 3px 8px; border-radius: 4px; text-decoration: none; white-space: nowrap; margin-left: auto; }
+    .stock-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .stock-in { background: #52C41A; }
+    .stock-low { background: #FAAD14; }
+    .stock-out { background: #D9D9D9; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--cj-text-secondary); font-size: 13px; }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+    .footer-info { text-align: center; padding: 8px 12px 16px; font-size: 11px; color: #BFBFBF; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="https://frontend.cjdropshipping.com/cj-web-egg-config-resource/cj/favicon.ico" alt="CJ" onerror="this.style.display='none'">
+    <h1>Product List / 商品列表</h1>
+    <span class="badge" id="totalBadge">0 products</span>
+  </div>
+  <div class="product-list" id="productList">
+    <div class="empty-state"><div class="icon">📦</div><div>Loading... / 加载中...</div></div>
+  </div>
+  <div class="footer-info" id="footerInfo"></div>
+
+  <script>
+    (function() {
+      function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      function renderProducts(products, total, page, totalPages) {
+        var list = document.getElementById('productList');
+        document.getElementById('totalBadge').textContent = (total || products.length) + ' products';
+        if (!products || products.length === 0) {
+          list.innerHTML = '<div class="empty-state"><div class="icon">📦</div><div>No products found / 暂无商品</div></div>';
+          return;
+        }
+        list.innerHTML = products.map(function(p) {
+          var name = p.productNameEn || p.nameEn || 'Unknown';
+          var price = p.sellPrice != null ? p.sellPrice : (p.nowPrice != null ? p.nowPrice : '-');
+          var img = p.productImage || p.bigImage || p.imgUrl || '';
+          var sku = p.productSku || p.sku || '';
+          var stock = p.totalVerifiedInventory != null ? p.totalVerifiedInventory : (p.warehouseInventoryNum != null ? p.warehouseInventoryNum : null);
+          var pid = p.pid || '';
+          var productUrl = p.productUrl || (pid ? 'https://cjdropshipping.com/product/' + encodeURIComponent(name.replace(/ /g,'-').toLowerCase()) + '-p-' + pid + '.html' : '');
+          var categoryName = p.categoryName || p.threeCategoryName || p.twoCategoryName || p.oneCategoryName || '';
+          var profitRate = p.profitMarginRate != null ? p.profitMarginRate : null;
+          var variantCount = p.variants ? p.variants.length : (p.variantList ? p.variantList.length : null);
+          var shippingWeight = p.productWeight || p.shippingWeight || null;
+          var sourcingType = p.sourcingType || '';
+          var productType = p.productType || '';
+          var shippingTime = p.shippingTime || p.firstDeliveryDays || null;
+          var listingCount = p.listingCount || null;
+
+          var stockDot = '', stockText = '';
+          if (stock === null) { stockDot = '<span class="stock-dot stock-out"></span>'; stockText = 'N/A'; }
+          else if (stock > 100) { stockDot = '<span class="stock-dot stock-in"></span>'; stockText = stock + ' in stock'; }
+          else if (stock > 0) { stockDot = '<span class="stock-dot stock-low"></span>'; stockText = stock + ' (low)'; }
+          else { stockDot = '<span class="stock-dot stock-out"></span>'; stockText = 'Out of stock'; }
+
+          var typeTag = '';
+          if (productType === 'HOT' || productType === 'hot') typeTag = '<span class="type-tag type-hot">🔥 Hot</span>';
+          else if (productType === 'NEW' || productType === 'new') typeTag = '<span class="type-tag type-new">✨ New</span>';
+
+          return '<div class="product-card">' +
+            '<div class="card-top">' +
+              (img ? '<div class="img-wrap"><img src="' + escHtml(img) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'"></div>' : '<div class="img-wrap"></div>') +
+              '<div class="info">' +
+                '<div class="name">' + escHtml(name) + '</div>' +
+                '<div class="price-row"><span class="price">$' + escHtml(String(price)) + '</span><span class="price-label">sell price</span></div>' +
+                '<div class="meta-grid">' +
+                  '<div class="meta-item">' + stockDot + '<span class="mv">' + stockText + '</span></div>' +
+                  (categoryName ? '<div class="meta-item"><span class="ml">Cat:</span><span class="mv">' + escHtml(categoryName) + '</span></div>' : '<div></div>') +
+                  (profitRate != null ? '<div class="meta-item"><span class="ml">Profit:</span><span class="mv">' + escHtml(String(profitRate)) + '%</span></div>' : '') +
+                  (variantCount != null ? '<div class="meta-item"><span class="ml">Variants:</span><span class="mv">' + variantCount + '</span></div>' : '') +
+                  (shippingWeight != null ? '<div class="meta-item"><span class="ml">Weight:</span><span class="mv">' + escHtml(String(shippingWeight)) + 'g</span></div>' : '') +
+                  (shippingTime != null ? '<div class="meta-item"><span class="ml">Ship:</span><span class="mv">' + escHtml(String(shippingTime)) + ' days</span></div>' : '') +
+                  (sourcingType ? '<div class="meta-item"><span class="ml">Source:</span><span class="mv">' + escHtml(sourcingType) + '</span></div>' : '') +
+                  (listingCount != null ? '<div class="meta-item"><span class="ml">Listed:</span><span class="mv">' + listingCount + '</span></div>' : '') +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="card-footer">' +
+              (sku ? '<span class="sku-tag" title="' + escHtml(sku) + '">' + escHtml(sku) + '</span>' : '<span></span>') +
+              typeTag +
+              (productUrl ? '<a href="' + escHtml(productUrl) + '" target="_blank" class="link-btn">View &#x2192;</a>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+        var footerParts = ['Total: ' + (total || products.length) + ' products'];
+        if (page && totalPages) footerParts.push('Page ' + page + ' / ' + totalPages);
+        document.getElementById('footerInfo').textContent = footerParts.join(' · ');
+      }
+
+      if (typeof window.__INITIAL_DATA__ !== 'undefined' && window.__INITIAL_DATA__) {
+        var data = window.__INITIAL_DATA__;
+        var products = [];
+        var total = data.totalRecords || 0;
+        var page = data.pageNumber || 1;
+        var totalPages = data.totalPages || 1;
+        if (data.content && Array.isArray(data.content) && data.content[0] && data.content[0].productList) {
+          products = data.content[0].productList;
+        } else if (Array.isArray(data.list)) {
+          products = data.list;
+        } else if (Array.isArray(data)) {
+          products = data;
+        }
+        renderProducts(products, total, page, totalPages);
+      } else {
+        document.getElementById('productList').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据<br><small style="color:#ccc;font-size:10px">Data is injected by MCP server after calling search_products</small></div></div>';
+      }
+    })();
+  </script>
+</body>
+</html>

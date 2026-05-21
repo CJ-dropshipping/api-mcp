@@ -17,11 +17,39 @@ interface ResourceContent {
   contents: Array<{ uri: string; mimeType: string; text: string }>;
 }
 
+/** 模块级缓存：存储最近一次 search_products / get_product_detail 的数据，用于注入 UI 初始数据 */
+let cachedProductListData: unknown = null;
+let cachedProductDetailData: unknown = null;
+
+export function setProductListCache(data: unknown): void {
+  cachedProductListData = data;
+}
+
+export function setProductDetailCache(data: unknown): void {
+  cachedProductDetailData = data;
+}
+
+export function hasProductDetailCache(): boolean {
+  return cachedProductDetailData != null;
+}
+
 const resources: Resource[] = [
   {
     uri: 'ui://cj-mcp/login',
     name: 'CJ Login Form',
     description: 'Interactive login form for CJ Dropshipping / CJ登录页面',
+    mimeType: 'text/html',
+  },
+  {
+    uri: 'ui://cj-mcp/product-list',
+    name: 'CJ Product List',
+    description: 'Interactive product list viewer. Use this to display search_products results in a visual card layout. / 商品列表展示页面，用于以卡片方式可视化展示商品搜索结果。',
+    mimeType: 'text/html',
+  },
+  {
+    uri: 'ui://cj-mcp/product-detail',
+    name: 'CJ Product Detail',
+    description: 'Interactive product detail viewer. Use this to display get_product_detail results with images, variants, and pricing. / 商品详情展示页面，用于展示商品图片、规格和价格信息。',
     mimeType: 'text/html',
   },
 ];
@@ -62,6 +90,44 @@ export function handleResourceRead(uri: string): ResourceContent {
     }
 
     throw new Error('Login HTML not found. Ensure src/ui/login.html exists.');
+  }
+
+  if (uri.startsWith('ui://cj-mcp/product-list')) {
+    const possiblePaths = [
+      join(process.cwd(), 'src', 'ui', 'product-list.html'),
+      join(__dirname, '..', '..', 'ui', 'product-list.html'),
+    ];
+    for (const htmlPath of possiblePaths) {
+      try {
+        let htmlContent = readFileSync(htmlPath, 'utf-8');
+        // 注入初始数据
+        if (cachedProductListData) {
+          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
+          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
+        }
+        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+      } catch { continue; }
+    }
+    throw new Error('product-list.html not found. Ensure src/ui/product-list.html exists.');
+  }
+
+  if (uri.startsWith('ui://cj-mcp/product-detail')) {
+    const possiblePaths = [
+      join(process.cwd(), 'src', 'ui', 'product-detail.html'),
+      join(__dirname, '..', '..', 'ui', 'product-detail.html'),
+    ];
+    for (const htmlPath of possiblePaths) {
+      try {
+        let htmlContent = readFileSync(htmlPath, 'utf-8');
+        // 注入初始数据
+        if (cachedProductDetailData) {
+          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
+          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
+        }
+        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+      } catch { continue; }
+    }
+    throw new Error('product-detail.html not found. Ensure src/ui/product-detail.html exists.');
   }
 
   throw new Error(`Unknown resource: ${uri}`);

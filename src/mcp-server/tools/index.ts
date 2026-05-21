@@ -8,7 +8,7 @@
  */
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { authTools, getAuthTools, handleAuthTool } from './auth.tool.js';
-import { productTools, handleProductTool } from './product.tool.js';
+import { productTools, getProductTools, handleProductTool } from './product.tool.js';
 import { logisticsTools, handleLogisticsTool } from './logistics.tool.js';
 import { navigateTools, handleNavigateTool } from './navigate.tool.js';
 import { orderTools, handleOrderTool } from './order.tool.js';
@@ -72,6 +72,7 @@ export function registerTools(): void {
   }
 
   // @note 新增(64次): 静态工具列表不含 auth（auth 由 getAuthTools() 动态返回）
+  // @note 更新: product 也改为 staticTools 仅用于注册 handler，实际展示用 getProductTools()
   staticTools = [
     ...productTools, ...logisticsTools,
     ...orderTools, ...disputeTools,
@@ -80,9 +81,13 @@ export function registerTools(): void {
 }
 
 export function getToolsList(): Tool[] {
-  // @note 新增(64次): getAuthTools() 每次调用都动态返回认证工具列表
-  // 当 waitForLoginInProgress=true 时， wait_for_login 不含 _meta.ui.resourceUri，防止客户端再次弹窗
-  return [...getAuthTools(), ...staticTools];
+  // getAuthTools() 每次调用都动态返回认证工具列表（wait_for_login 含动态 resourceUri）
+  // getProductTools() 每次调用都动态返回商品工具列表（show_product_detail 含动态 pid resourceUri）
+  const nonProductStatic = [
+    ...logisticsTools, ...orderTools, ...disputeTools,
+    ...shopTools, ...stockTools, ...webhookTools, ...navigateTools,
+  ];
+  return [...getAuthTools(), ...getProductTools(), ...nonProductStatic];
 }
 
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {

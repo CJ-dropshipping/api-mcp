@@ -17,6 +17,7 @@ import { ensureAccessToken, getAccessToken } from '../../auth/session.js';
 import { setTokenGetter } from '../../api-client/http-client.js';
 import { getEnvConfig } from '../../config/env.js';
 import { getProductUrl } from '../../utils/product-href.js';
+import { setProductListCache, setProductDetailCache, hasProductDetailCache } from '../resources/index.js';
 
 // 注入 token getter (同步获取缓存的 token)
 setTokenGetter(() => getAccessToken());
@@ -35,7 +36,9 @@ export const productTools: Tool[] = [
       '- 用户说「免费配送」「包邮」→ addMarkStatus=1\n' +
       '- 用户说「按价格从低到高」→ orderBy=2, sort=asc\n' +
       '- 用户说「给我看更多」「下一页」→ pageNum 递增\n' +
+      '- 用户说「前N条」「N条数据」「N个商品」→ pageSize=N（未指定时默认 pageSize=20）\n' +
       '- 用户说「我自己的备货」「我的私有库存」「我入库的商品」→ 使用 query_private_inventory\n' +
+      '⚠️【展示规则】调用此工具后，必须立即调用 show_product_list 以卡片 UI 界面展示结果，不要纯文字展示商品列表。\n' +
       '⚠️【搜品 vs 搜索商品 区分】\n' +
       '- 此工具仅搜索 CJ 平台**现有商品目录**中的商品\n' +
       '- 若用户说「帮我搜品」「我想让CJ帮我找货源」「提交搜品需求」「这个商品CJ有没有代发」「我在1688/速卖通/阿里看到一个商品，帮我找」→ 使用 create_sourcing（不是此工具）\n' +
@@ -149,6 +152,7 @@ export const productTools: Tool[] = [
       '- 用户说「这个 pid/SKU 的商品」→ 传入 pid 或 productSku\n' +
       '- 用户说「美国仓有多少库存」→ countryCode=US\n' +
       '- pid/productSku/variantSku 三选一必传 / One of pid/productSku/variantSku is required.\n' +
+      '⚠️【展示规则】调用此工具后，必须立即调用 show_product_detail 以图片+规格 UI 界面展示结果，不要纯文字展示商品详情。\n' +
       'Get full product details: name, images, price, variants(color/size), inventory, description, logistics.\n' +
       '[Intent mapping] "product detail" / "查这个商品" / "show product info" → use this tool with pid or productSku.',
     inputSchema: {
@@ -389,7 +393,86 @@ export const productTools: Tool[] = [
       required: ['imageUrl'],
     },
   },
+  {
+    name: 'show_product_list',
+    description:
+      '【UI展示工具】在 MCP Apps 界面中以可视化卡片形式展示商品列表。\n' +
+      '调用时机：当用户请求「展示商品列表」「以卡片形式显示商品」「打开商品列表界面」时调用此工具。\n' +
+      '也可在 search_products 返回结果后主动调用此工具，以提供更直观的视觉展示。\n' +
+      '界面支持：搜索、分页、点击商品跳转详情。\n' +
+      '[UI tool] Show product list in visual card interface. Use after search_products to provide better visual experience.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        keyword: {
+          type: 'string',
+          description: '预填搜索关键词 / Pre-fill search keyword',
+        },
+      },
+      required: [],
+    },
+    _meta: {
+      ui: {
+        resourceUri: 'ui://cj-mcp/product-list',
+      },
+    },
+  },
+  {
+    name: 'show_product_detail',
+    description:
+      '【UI展示工具】在 MCP Apps 界面中以可视化方式展示单个商品详情，含图片、规格变体、价格、库存等。\n' +
+      '调用时机：当用户请求「展示商品详情」「查看商品图片」「以界面显示商品」或在 get_product_detail 返回后主动调用时使用。\n' +
+      '参数 pid 必填：传入商品 pid，界面将自动加载并展示商品信息。\n' +
+      '[UI tool] Show single product detail with images and variants. Provide pid from get_product_detail result.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        pid: {
+          type: 'string',
+          description: '商品ID (pid)，必填 / Product ID (pid), required',
+        },
+      },
+      required: ['pid'],
+    },
+    _meta: {
+      ui: {
+        resourceUri: 'ui://cj-mcp/product-detail',
+      },
+    },
+  },
 ];
+
+/** module-level: 记录最近一次数据更新序列号，用于动态生成唯一 resourceUri */
+let lastProductDetailPid = '';
+let productUriSeq = 0;
+
+/**
+ * 动态工具列表：
+ * - search_products 注入 _meta.ui.resourceUri: ui://cj-mcp/product-list?t=...（每次都唯一）
+ * - get_product_detail 注入 _meta.ui.resourceUri: ui://cj-mcp/product-detail?pid=...&t=...
+ * - show_product_list / show_product_detail 同样动态注入唯一 URI
+ * 这样工具被调用时，MCP 客户端会直接显示 UI，并通过 resources 注入初始数据。
+ */
+export function getProductTools(): Tool[] {
+  const seq = ++productUriSeq;
+  const ts = Date.now();
+  return productTools.map(tool => {
+    if (tool.name === 'show_product_list') {
+      return {
+        ...tool,
+        _meta: { ui: { resourceUri: `ui://cj-mcp/product-list?t=${ts}_${seq}` } },
+      };
+    }
+    if (tool.name === 'show_product_detail') {
+      const pid = lastProductDetailPid;
+      return {
+        ...tool,
+        _meta: { ui: { resourceUri: `ui://cj-mcp/product-detail${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
+      };
+    }
+    return tool;
+  });
+}
 
 export async function handleProductTool(
   name: string,
@@ -417,6 +500,20 @@ export async function handleProductTool(
         return await handleGetWarehouses();
       case 'get_product_detail':
         return await handleGetProductDetail(args);
+      case 'show_product_list':
+        return {
+          content: [{ type: 'text', text: '✅ 商品列表界面已打开 / Product list UI opened. 用户可在界面中搜索和浏览商品。' }],
+        };
+      case 'show_product_detail':
+        if (!hasProductDetailCache()) {
+          return {
+            content: [{ type: 'text', text: '⚠️ 尚无商品详情数据。请先调用 get_product_detail 获取商品数据，再调用此工具展示。\nNo product detail data cached. Please call get_product_detail first to fetch product data, then call this tool to display it.' }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{ type: 'text', text: `✅ 商品详情界面已打开 / Product detail UI opened.${args.pid ? ' pid: ' + String(args.pid) : ''} 用户可在界面中查看商品图片和规格。` }],
+        };
       case 'query_cj_inventory':
         return await handleQueryCjInventory(args);
       case 'get_my_products':
@@ -473,8 +570,8 @@ async function handleSearchProducts(args: Record<string, unknown>) {
   if (args.productFlag != null) params.productFlag = String(args.productFlag);
   if (args.sort) params.sort = String(args.sort);
   if (args.orderBy != null) params.orderBy = String(args.orderBy);
-  params.pageNum = String((args.pageNum as number) || 1);
-  params.pageSize = String(Math.min((args.pageSize as number) || 20, 100));
+  params.page = String((args.pageNum as number) || 1);
+  params.size = String(Math.min((args.pageSize as number) || 20, 100));
 
   const response = await httpClient.request(ENDPOINTS.product.listV2, {
     method: 'GET',
@@ -513,8 +610,15 @@ async function handleSearchProducts(args: Record<string, unknown>) {
     });
   }
 
+  const totalRecords = (response.data as Record<string, unknown> | null)?.totalRecords || 0;
+  // 缓存数据供 UI 资源注入使用（MCP Apps 打开时通过 window.__INITIAL_DATA__ 获取数据）
+  setProductListCache(response.data);
   return {
-    content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+    content: [{ type: 'text', text:
+      `📋 Found ${totalRecords} products total. Data cached for UI display.\n` +
+      `💡 Please call **show_product_list** to display the product cards in MCP Apps UI.\n\n` +
+      JSON.stringify(response.data, null, 2),
+    }],
   };
 }
 
@@ -595,10 +699,18 @@ async function handleGetProductDetail(args: Record<string, unknown>) {
     const pid = String(data.pid);
     const name = String(data.productNameEn || '');
     (data as Record<string, unknown>).productUrl = getProductUrl(config.webBase, pid, name);
+    // 更新最近查询的 pid，供动态 resourceUri 使用
+    lastProductDetailPid = pid;
+    // 缓存数据供 UI 资源注入使用（MCP Apps 打开时通过 window.__INITIAL_DATA__ 获取数据）
+    setProductDetailCache(response.data);
   }
 
   return {
-    content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+    content: [{ type: 'text', text:
+      `🔍 Product detail loaded. Data cached for UI display.\n` +
+      `💡 Please call **show_product_detail** to display the product in MCP Apps UI.\n\n` +
+      JSON.stringify(response.data, null, 2),
+    }],
   };
 }
 
