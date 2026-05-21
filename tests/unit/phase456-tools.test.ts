@@ -51,15 +51,27 @@ import { handleOrderTool, orderTools } from '../../src/mcp-server/tools/order.to
 import { handleDisputeTool, disputeTools } from '../../src/mcp-server/tools/dispute.tool';
 import { handleShopTool, shopTools } from '../../src/mcp-server/tools/shop.tool';
 import { handleStockTool, stockTools } from '../../src/mcp-server/tools/stock.tool';
+import { logisticsTools } from '../../src/mcp-server/tools/logistics.tool';
+import { webhookTools } from '../../src/mcp-server/tools/webhook.tool';
 
 describe('order.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了6个tools', () => {
-    expect(orderTools).toHaveLength(6);
+  it('注册了14个tools', () => {
+    expect(orderTools).toHaveLength(16);
     expect(orderTools.map(t => t.name)).toContain('add_to_cart');
     expect(orderTools.map(t => t.name)).toContain('create_order');
+    expect(orderTools.map(t => t.name)).toContain('submit_order_to_cart');
+    expect(orderTools.map(t => t.name)).toContain('confirm_cart_and_pay');
+    expect(orderTools.map(t => t.name)).toContain('generate_payment_link');
     expect(orderTools.map(t => t.name)).toContain('get_order_list');
+    expect(orderTools.map(t => t.name)).toContain('get_order_detail');
+    expect(orderTools.map(t => t.name)).toContain('get_account_balance');
+    expect(orderTools.map(t => t.name)).toContain('pay_by_balance');
+    expect(orderTools.map(t => t.name)).toContain('pay_by_balance_v2');
+    expect(orderTools.map(t => t.name)).toContain('confirm_order');
+    expect(orderTools.map(t => t.name)).toContain('delete_order');
+    expect(orderTools.map(t => t.name)).toContain('query_cogs');
   });
 
   it('add_to_cart 调用正确的端点', async () => {
@@ -71,10 +83,10 @@ describe('order.tool', () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it('get_pay_order_list 调用正确端点', async () => {
+  it('get_pay_order_list 调用正确端点（已修正为 /shopping/order/list）', async () => {
     await handleOrderTool('get_pay_order_list', { pageNum: 1 });
     expect(mockRequest).toHaveBeenCalledWith(
-      '/shopping/directOrder/getPayOrderListV3',
+      '/shopping/order/list',
       expect.objectContaining({ tier: 'read' })
     );
   });
@@ -83,15 +95,24 @@ describe('order.tool', () => {
 describe('dispute.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了4个tools', () => {
-    expect(disputeTools).toHaveLength(4);
+  it('注册了6个tools', () => {
+    expect(disputeTools).toHaveLength(6);
+    expect(disputeTools.map(t => t.name)).toContain('get_dispute_products');
     expect(disputeTools.map(t => t.name)).toContain('create_dispute');
     expect(disputeTools.map(t => t.name)).toContain('cancel_dispute');
     expect(disputeTools.map(t => t.name)).toContain('list_disputes');
+    expect(disputeTools.map(t => t.name)).toContain('get_dispute_detail');
+    expect(disputeTools.map(t => t.name)).toContain('confirm_dispute');
   });
 
-  it('create_dispute 使用 write tier', async () => {
-    await handleDisputeTool('create_dispute', { orderId: 'O001', reason: 'damaged' });
+  it('create_dispute 使用 write tier 并传正确参数', async () => {
+    await handleDisputeTool('create_dispute', {
+      orderId: 'O001',
+      disputeReasonId: 1,
+      expectType: 1,
+      messageText: '质量问题',
+      productInfoList: [{ lineItemId: 'L001', quantity: 1, price: 10 }],
+    });
     expect(mockRequest).toHaveBeenCalledWith(
       '/disputes/create',
       expect.objectContaining({ tier: 'write' })
@@ -110,10 +131,12 @@ describe('dispute.tool', () => {
 describe('shop.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了2个tools', () => {
-    expect(shopTools).toHaveLength(2);
+  it('注册了4个tools', () => {
+    expect(shopTools).toHaveLength(4);
     expect(shopTools.map(t => t.name)).toContain('list_shops');
     expect(shopTools.map(t => t.name)).toContain('get_authorize_url');
+    expect(shopTools.map(t => t.name)).toContain('get_account_settings');
+    expect(shopTools.map(t => t.name)).toContain('save_product_to_shop');
   });
 
   it('list_shops 调用 /shop/getShops', async () => {
@@ -125,13 +148,34 @@ describe('shop.tool', () => {
   });
 });
 
+describe('logistics.tool', () => {
+  it('注册了4个tools（含 calculate_freight_tip）', () => {
+    expect(logisticsTools).toHaveLength(4);
+    expect(logisticsTools.map((t: { name: string }) => t.name)).toContain('calculate_freight');
+    expect(logisticsTools.map((t: { name: string }) => t.name)).toContain('get_tracking_info');
+    expect(logisticsTools.map((t: { name: string }) => t.name)).toContain('calculate_freight_tip');
+  });
+});
+
+describe('webhook.tool', () => {
+  it('注册了1个tool（configure_webhook）', () => {
+    expect(webhookTools).toHaveLength(1);
+    expect(webhookTools.map((t: { name: string }) => t.name)).toContain('configure_webhook');
+  });
+});
+
 describe('stock.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了3个tools', () => {
-    expect(stockTools).toHaveLength(3);
+  it('注册了7个tools', () => {
+    expect(stockTools).toHaveLength(7);
     expect(stockTools.map(t => t.name)).toContain('query_private_inventory');
     expect(stockTools.map(t => t.name)).toContain('query_sku_details');
+    expect(stockTools.map(t => t.name)).toContain('query_sku_detail_page');
+    expect(stockTools.map(t => t.name)).toContain('query_sku_detail_by_sku');
+    expect(stockTools.map(t => t.name)).toContain('get_product_inventory');
+    expect(stockTools.map(t => t.name)).toContain('get_storage_info');
+    expect(stockTools.map(t => t.name)).toContain('query_warehouse_order_pictures');
   });
 
   it('query_sku_details 调用正确端点', async () => {

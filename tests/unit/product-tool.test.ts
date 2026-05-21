@@ -52,9 +52,22 @@ import { handleProductTool, productTools } from '../../src/mcp-server/tools/prod
 describe('product.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
-  it('注册了3个tools（search_products, get_category_tree, get_warehouses）', () => {
-    expect(productTools).toHaveLength(3);
+  it('注册了16个tools（search_products, get_category_tree, get_warehouses, get_product_detail, query_cj_inventory, get_my_products, get_product_variants, create_sourcing, query_sourcing, list_product_connections, get_product_reviews, create_product_connection, disconnect_product, search_products_by_image, show_product_list, show_product_detail）', () => {
+    expect(productTools).toHaveLength(16);
     expect(productTools.map(t => t.name)).toContain('search_products');
+    expect(productTools.map(t => t.name)).toContain('get_product_detail');
+    expect(productTools.map(t => t.name)).toContain('query_cj_inventory');
+    expect(productTools.map(t => t.name)).toContain('get_my_products');
+    expect(productTools.map(t => t.name)).toContain('get_product_variants');
+    expect(productTools.map(t => t.name)).toContain('create_sourcing');
+    expect(productTools.map(t => t.name)).toContain('query_sourcing');
+    expect(productTools.map(t => t.name)).toContain('list_product_connections');
+    expect(productTools.map(t => t.name)).toContain('get_product_reviews');
+    expect(productTools.map(t => t.name)).toContain('create_product_connection');
+    expect(productTools.map(t => t.name)).toContain('disconnect_product');
+    expect(productTools.map(t => t.name)).toContain('search_products_by_image');
+    expect(productTools.map(t => t.name)).toContain('show_product_list');
+    expect(productTools.map(t => t.name)).toContain('show_product_detail');
   });
 
   it('search_products 为 content[].productList[] 中的每个商品注入 productUrl', async () => {
@@ -88,7 +101,10 @@ describe('product.tool', () => {
     const result = await handleProductTool('search_products', { keyword: 'bluetooth', pageSize: 10 });
     expect(result.isError).toBeFalsy();
 
-    const data = JSON.parse(result.content[0].text);
+    // 返回文本包含 UI 引导前缀 + JSON 数据，提取 JSON 部分
+    const rawText = result.content[0].text;
+    const jsonStart = rawText.indexOf('{');
+    const data = JSON.parse(rawText.slice(jsonStart));
     const product = data.content[0].productList[0];
 
     expect(product.productUrl).toBeDefined();

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CJ Product Detail</title>
+  <style>
+    :root {
+      --cj-primary: #FF7700;
+      --cj-primary-light: #FFF1E5;
+      --cj-text: #333333;
+      --cj-text-secondary: #666666;
+      --cj-border: #E0E0E0;
+      --cj-bg: #F5F5F5;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--cj-bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: var(--cj-primary);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .header img { width: 24px; height: 24px; background: #fff; border-radius: 5px; }
+    .header h1 { color: #fff; font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .gallery { background: #fff; padding: 12px; }
+    #mainImg { width: 100%; max-height: 240px; object-fit: contain; display: block; margin: 0 auto; border-radius: 6px; background: #f8f8f8; }
+    .thumbnail-row { display: flex; gap: 6px; justify-content: flex-start; margin-top: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .thumbnail-row img { width: 52px; height: 52px; min-width: 52px; object-fit: cover; border-radius: 4px; border: 2px solid transparent; cursor: pointer; }
+    .thumbnail-row img.active, .thumbnail-row img:hover { border-color: var(--cj-primary); }
+
+    .section { background: #fff; margin-top: 6px; padding: 12px 14px; }
+    .product-name { font-size: 14px; font-weight: 600; color: var(--cj-text); line-height: 1.4; margin-bottom: 6px; }
+    .price-block { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+    .price-main { font-size: 20px; font-weight: 700; color: var(--cj-primary); }
+    .price-sub { font-size: 12px; color: #bbb; }
+    .info-row { display: flex; align-items: flex-start; padding: 5px 0; border-bottom: 1px solid #f5f5f5; font-size: 12px; gap: 6px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .label { color: var(--cj-text-secondary); min-width: 82px; flex-shrink: 0; }
+    .info-row .value { color: var(--cj-text); font-weight: 500; flex: 1; word-break: break-all; }
+    .info-row .value a { color: var(--cj-primary); text-decoration: none; }
+    .section-title { font-size: 13px; font-weight: 600; color: var(--cj-text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .section-title::before { content: ''; display: inline-block; width: 3px; height: 13px; background: var(--cj-primary); border-radius: 2px; }
+
+    .variant-grid { display: flex; flex-direction: column; gap: 6px; }
+    .variant-item { border: 1px solid var(--cj-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .variant-item img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .variant-item .v-info { flex: 1; min-width: 0; }
+    .variant-item .v-name { color: var(--cj-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
+    .variant-item .v-meta { display: flex; gap: 8px; font-size: 11px; }
+    .variant-item .v-price { color: var(--cj-primary); font-weight: 600; }
+    .variant-item .v-stock { color: var(--cj-text-secondary); }
+    .variant-item .v-weight { color: #bbb; }
+    .variant-item .v-sku { color: #bbb; font-size: 10px; }
+
+    .action-bar { background: #fff; margin-top: 6px; padding: 10px 14px; display: flex; gap: 8px; }
+    .action-bar a { flex: 1; padding: 9px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; text-align: center; text-decoration: none; background: #fff; color: var(--cj-primary); border: 1px solid var(--cj-primary); }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--cj-text-secondary); font-size: 13px; }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+
+    .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--cj-primary-light); color: var(--cj-primary); margin-left: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="https://frontend.cjdropshipping.com/cj-web-egg-config-resource/cj/favicon.ico" alt="CJ" onerror="this.style.display='none'">
+    <h1 id="headerTitle">Product Detail / 商品详情</h1>
+  </div>
+  <div id="mainContent">
+    <div class="empty-state"><div class="icon">📦</div><div>Loading... / 加载中...</div></div>
+  </div>
+
+  <script>
+    (function() {
+      function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      window.switchImage = function(el, src) {
+        var mainImg = document.getElementById('mainImg');
+        if (mainImg) { mainImg.src = src; mainImg.onerror = function() { this.style.display='none'; }; }
+        document.querySelectorAll('.thumbnail-row img').forEach(function(img) { img.classList.remove('active'); });
+        el.classList.add('active');
+      };
+
+      // 解析可能是 JSON 字符串数组 或 真实数组 的字段
+      function parseArrayField(val) {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          try { var parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch(e) {}
+          // fallback: 逗号分割
+          return val.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        }
+        return [];
+      }
+
+      function renderDetail(product) {
+        if (!product) {
+          document.getElementById('mainContent').innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据</div></div>';
+          return;
+        }
+
+        var name = product.productNameEn || product.nameEn || product.productName || 'Unknown Product';
+        document.getElementById('headerTitle').textContent = name.length > 28 ? name.substr(0, 28) + '...' : name;
+
+        // 图片处理：优先 productImageSet（真实数组），次选 productImage（JSON字符串数组），最后 bigImage
+        var images = [];
+        if (Array.isArray(product.productImageSet) && product.productImageSet.length > 0) {
+          images = product.productImageSet;
+        } else {
+          images = parseArrayField(product.productImage);
+        }
+        if (images.length === 0 && product.bigImage) images = [product.bigImage];
+        // 去重
+        images = images.filter(function(v, i, a) { return v && a.indexOf(v) === i; });
+        var mainImage = images[0] || '';
+
+        // 价格
+        var sellPrice = product.sellPrice || product.nowPrice || '-';
+
+        // 基础信息
+        var sku = product.productSku || product.sku || '';
+        var pid = product.pid || '';
+        var productUrl = product.productUrl || '';
+        var categoryName = product.categoryName || product.threeCategoryName || product.twoCategoryName || '';
+        var productType = product.productType || '';
+        var productWeight = product.productWeight || '';
+        var packingWeight = product.packingWeight || '';
+        var entryNameEn = product.entryNameEn || '';
+        var entryCode = product.entryCode || '';
+        var productUnit = product.productUnit || '';
+        var sourceFrom = product.sourceFrom;
+
+        // 材质、包装
+        var materialNameEn = '';
+        if (Array.isArray(product.materialNameEnSet)) materialNameEn = product.materialNameEnSet.join(', ');
+        else materialNameEn = parseArrayField(product.materialNameEn).join(', ');
+
+        var packingNameEn = '';
+        if (Array.isArray(product.packingNameEnSet)) packingNameEn = product.packingNameEnSet.join(', ');
+        else packingNameEn = parseArrayField(product.packingNameEn).join(', ');
+
+        // 商品属性
+        var productKeyEn = product.productKeyEn || '';
+        if (Array.isArray(product.productKeyEnSet)) productKeyEn = product.productKeyEnSet.join(', ');
+
+        // 变体
+        var variants = Array.isArray(product.variants) ? product.variants : (Array.isArray(product.variantList) ? product.variantList : []);
+
+        // 构建 HTML
+        var thumbnailsHtml = '';
+        if (images.length > 1) {
+          thumbnailsHtml = '<div class="thumbnail-row">' +
+            images.slice(0, 8).map(function(src, idx) {
+              return '<img src="' + escHtml(src) + '" class="' + (idx===0?'active':'') + '" onclick="switchImage(this,\'' + escHtml(src) + '\')" loading="lazy" onerror="this.style.opacity=0.3">';
+            }).join('') +
+          '</div>';
+        }
+
+        var galleryHtml = '';
+        if (mainImage) {
+          galleryHtml = '<div class="gallery">' +
+            '<img id="mainImg" src="' + escHtml(mainImage) + '" alt="Product Image" onerror="this.style.display=\'none\'">' +
+            thumbnailsHtml +
+          '</div>';
+        }
+
+        function infoRow(label, value) {
+          if (!value) return '';
+          return '<div class="info-row"><span class="label">' + escHtml(label) + '</span><span class="value">' + value + '</span></div>';
+        }
+
+        var basicInfoHtml = '<div class="section">' +
+          '<div class="product-name">' + escHtml(name) + '</div>' +
+          '<div class="price-block"><span class="price-main">$' + escHtml(String(sellPrice)) + '</span><span class="price-sub">Sell Price</span></div>' +
+          infoRow('SKU / SPU', escHtml(sku)) +
+          infoRow('PID', '<span style="font-size:11px;color:#bbb">' + escHtml(pid) + '</span>') +
+          infoRow('Category', escHtml(categoryName)) +
+          infoRow('Product Type', escHtml(productType)) +
+          infoRow('Weight (g)', escHtml(productWeight)) +
+          infoRow('Packing Wt. (g)', escHtml(packingWeight)) +
+          infoRow('Unit', escHtml(productUnit)) +
+          infoRow('Material', escHtml(materialNameEn)) +
+          infoRow('Packing', escHtml(packingNameEn)) +
+          infoRow('HS Code', escHtml(entryCode) + (entryNameEn ? ' – ' + escHtml(entryNameEn) : '')) +
+          infoRow('Variant Key', escHtml(productKeyEn)) +
+          (sourceFrom != null ? infoRow('Source', sourceFrom === 1 ? 'CJ Original' : sourceFrom === 2 ? 'Supplier' : String(sourceFrom)) : '') +
+          (productUrl ? infoRow('CJ URL', '<a href="' + escHtml(productUrl) + '" target="_blank">Open on CJ &#x2192;</a>') : '') +
+        '</div>';
+
+        var variantsHtml = '';
+        if (variants.length > 0) {
+          var maxShow = Math.min(variants.length, 10);
+          variantsHtml = '<div class="section">' +
+            '<div class="section-title">Variants / 规格 <span class="badge">' + variants.length + '</span></div>' +
+            '<div class="variant-grid">' +
+            variants.slice(0, maxShow).map(function(v) {
+              var vName = v.variantNameEn || v.propertyValueEn || v.variantKey || v.variantSku || '';
+              var vPrice = v.variantSellPrice != null ? '$' + v.variantSellPrice : '';
+              var vSugPrice = v.variantSugSellPrice != null ? '(Sugg. $' + v.variantSugSellPrice + ')' : '';
+              var vStock = v.inventoryNum != null ? v.inventoryNum + ' in stock' : '';
+              var vWeight = v.variantWeight != null ? v.variantWeight + 'g' : '';
+              var vSku = v.variantSku || '';
+              var vImg = v.variantImage || '';
+              var vSize = (v.variantLength && v.variantWidth && v.variantHeight) ? v.variantLength + 'x' + v.variantWidth + 'x' + v.variantHeight + 'mm' : '';
+              return '<div class="variant-item">' +
+                (vImg ? '<img src="' + escHtml(vImg) + '" alt="" onerror="this.style.display=\'none\'">' : '') +
+                '<div class="v-info">' +
+                  '<div class="v-name">' + escHtml(vName) + '</div>' +
+                  '<div class="v-meta">' +
+                    (vPrice ? '<span class="v-price">' + escHtml(vPrice) + '</span>' : '') +
+                    (vSugPrice ? '<span class="v-stock" style="color:#bbb">' + escHtml(vSugPrice) + '</span>' : '') +
+                    (vStock ? '<span class="v-stock">&#128230; ' + escHtml(vStock) + '</span>' : '') +
+                    (vWeight ? '<span class="v-weight">' + escHtml(vWeight) + '</span>' : '') +
+                    (vSize ? '<span class="v-weight">' + escHtml(vSize) + '</span>' : '') +
+                  '</div>' +
+                  (vSku ? '<div class="v-sku">' + escHtml(vSku) + '</div>' : '') +
+                '</div>' +
+              '</div>';
+            }).join('') +
+            (variants.length > maxShow ? '<div style="text-align:center;font-size:11px;color:#bbb;padding:4px">+' + (variants.length - maxShow) + ' more variants</div>' : '') +
+            '</div></div>';
+        }
+
+        var actionHtml = '';
+        if (productUrl) {
+          actionHtml = '<div class="action-bar"><a href="' + escHtml(productUrl) + '" target="_blank">View on CJ Dropshipping &#x2192;</a></div>';
+        }
+
+        document.getElementById('mainContent').innerHTML = galleryHtml + basicInfoHtml + variantsHtml + actionHtml;
+      }
+
+      if (typeof window.__INITIAL_DATA__ !== 'undefined' && window.__INITIAL_DATA__) {
+        renderDetail(window.__INITIAL_DATA__);
+      } else {
+        document.getElementById('mainContent').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据<br><small style="color:#ccc;font-size:10px">Data is injected by MCP server after calling get_product_detail + show_product_detail</small></div></div>';
+      }
+    })();
+  </script>
+</body>
+</html>
