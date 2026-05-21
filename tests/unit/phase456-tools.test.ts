@@ -58,7 +58,7 @@ describe('order.tool', () => {
   beforeEach(() => mockRequest.mockClear());
 
   it('注册了14个tools', () => {
-    expect(orderTools).toHaveLength(16);
+    expect(orderTools).toHaveLength(18);
     expect(orderTools.map(t => t.name)).toContain('add_to_cart');
     expect(orderTools.map(t => t.name)).toContain('create_order');
     expect(orderTools.map(t => t.name)).toContain('submit_order_to_cart');

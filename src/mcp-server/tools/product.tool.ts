@@ -504,16 +504,23 @@ export async function handleProductTool(
         return {
           content: [{ type: 'text', text: '✅ 商品列表界面已打开 / Product list UI opened. 用户可在界面中搜索和浏览商品。' }],
         };
-      case 'show_product_detail':
-        if (!hasProductDetailCache()) {
+      case 'show_product_detail': {
+        const pid = args.pid ? String(args.pid) : '';
+        if (!pid) {
           return {
-            content: [{ type: 'text', text: '⚠️ 尚无商品详情数据。请先调用 get_product_detail 获取商品数据，再调用此工具展示。\nNo product detail data cached. Please call get_product_detail first to fetch product data, then call this tool to display it.' }],
+            content: [{ type: 'text', text: '❌ pid 必填 / pid is required.' }],
             isError: true,
           };
         }
+        // 直接调用 API 获取数据并设置缓存（确保资源读取时数据已就绪）
+        const detailResult = await handleGetProductDetail({ pid });
+        if (detailResult.isError) {
+          return detailResult;
+        }
         return {
-          content: [{ type: 'text', text: `✅ 商品详情界面已打开 / Product detail UI opened.${args.pid ? ' pid: ' + String(args.pid) : ''} 用户可在界面中查看商品图片和规格。` }],
+          content: [{ type: 'text', text: `✅ 商品详情界面已打开 / Product detail UI opened. pid: ${pid}` }],
         };
+      }
       case 'query_cj_inventory':
         return await handleQueryCjInventory(args);
       case 'get_my_products':

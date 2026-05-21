@@ -9,6 +9,7 @@ import { ENDPOINTS, API_VERSION_PREFIX } from '../../api-client/endpoints.js';
 import { ensureAccessToken } from '../../auth/session.js';
 import { getEnvConfig } from '../../config/env.js';
 import { logger, isDebugMode } from '../../utils/logger.js';
+import { setOrderListCache, setOrderDetailCache } from '../resources/index.js';
 
 export const orderTools: Tool[] = [
   {
@@ -172,21 +173,15 @@ export const orderTools: Tool[] = [
      */
     name: 'get_order_list',
     description:
-      '✅【默认/通用订单查询】用户说「查订单」「查全部订单」「查所有订单」「查最近的订单」「最近订单」「历史订单」「订单状态」时必须用此工具，不要用 get_pay_order_list！\n' +
-      '包含所有状态：已支付、处理中、已发货、已完成、已取消等。\n' +
+      '✅【订单列表查询入口】用户说「查订单」「查全部订单」「历史订单」「看看我的订单」→ 使用此工具！\n' +
+      '⚠️【展示规则】调用此工具后，必须立即调用 show_order_list 以卡片 UI 界面展示结果，不要纯文字展示订单列表。\n' +
       '【参数映射规则】\n' +
-      '- 用户说「查订单」「查所有订单」「查全部订单」→ 无需参数，直接调用\n' +
-      '- 用户说「最近的订单」「最近一笔订单」「最后一单」「最新的订单」→ sortByLatest=true, pageSize=1\n' +
-      '- 用户说「查订单D1234」「订单号是XXXX」→ orderIds=["D1234"]\n' +
-      '- 用户说「已发货的订单」→ status="shipped"\n' +
-      '- 用户说「历史订单」「最近下单」「买了什么」→ 不传 status，按默认分页返回\n' +
-      '- 用户说「已取消的」→ status="cancel"\n' +
-      '\n✅ DEFAULT tool for order queries. Use for: recent orders, order history, all orders, order status.\n' +
-      '[Intent mapping]\n' +
-      '- "latest order" / "most recent order" / "recent orders" → sortByLatest=true, pageSize=1\n' +
-      '- "order D1234" / specific order number → orderIds=["D1234"]\n' +
-      '- "shipped orders" → status="shipped"\n' +
-      '- "order history" / "recent purchases" → default (no status filter)',
+      '- 「查订单」「查所有订单」→ 无需参数\n' +
+      '- 「最近一笔订单」→ sortByLatest=true\n' +
+      '- 「已发货的订单」→ status="SHIPPED"\n' +
+      '- 「已取消的」→ status="CANCELLED"\n' +
+      'Query order list. ⚠️【Display rule】MUST call show_order_list immediately after to show results in MCP Apps UI.\n' +
+      '[Intent mapping] "show orders" / "my orders" / "order history" / "recent orders" → this tool.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -235,20 +230,16 @@ export const orderTools: Tool[] = [
   {
     name: 'get_order_detail',
     description:
-      '查询单个订单的完整详情，包括商品列表、收货地址、运费、快递单号、订单状态等。\n' +
+      '查询CJ单个订单的完整详情，包括订单状态、收货地址、商品清单、物流信息、金额明细等。\n' +
       '【意图映射】\n' +
-      '- 用户说「查一下订单 D202505XXX」「订单详情」「这个订单发货了吗」→ 使用此工具\n' +
-      '- 需要快递单号 → features=["LOGISTICS_TIMELINESS"]\n' +
-      '- orderId 必填（支持 CJ 订单号或自定义订单号）\n' +
+      '- 用户说「这个订单的详情」「订单详细信息」「查一下这笔订单」→ 使用此工具\n' +
+      '- 用户说「这个订单发货了吗」「我的包裹在哪」→ 使用此工具\n' +
+      '- orderId 必填 / orderId is required.\n' +
+      '⚠️【展示规则】调用此工具后，必须立即调用 show_order_detail 以可视化 UI 界面展示结果，不要纯文字展示订单详情。\n' +
       '【物流追踪二步流程】\n' +
-      '- 订单详情的 trackNumber 字段仅是快递单号，不包含实时物流事件/位置/节点信息\n' +
-      '- 若用户问「包裹到哪了」「物流进度」「快递状态」「track package」→\n' +
-      '  第一步：调用 get_order_detail 拿到 trackNumber\n' +
-      '  第二步：必须再调用 get_tracking_info([trackNumber]) 获取实时追踪信息\n' +
-      '  不得直接用 trackNumber 代替实时物流查询结果\n' +
-      'Get full details of a single order: products, address, shipping, tracking number, status.\n' +
-      '[Intent mapping] "order D202505XXX detail" / "did this order ship" / "get order info" → use this tool.\n' +
-      '[Logistics tracking] trackNumber from order detail is just a number. For real-time events, MUST call get_tracking_info([trackNumber]) as Step 2.',
+      '- 若用户问「包裹到哪了」「物流进度」「快递状态」→ 第一步调用此工具拿到 trackNumber，第二步调用 get_tracking_info([trackNumber])\n' +
+      'Get full order details. ⚠️【Display rule】MUST call show_order_detail(orderId) immediately after to display UI.\n' +
+      '[Intent mapping] "order detail" / "order status" / "has it shipped" → this tool.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -378,8 +369,52 @@ export const orderTools: Tool[] = [
       required: ['orderCodesList'],
     },
   },
+  {
+    name: 'show_order_list',
+    description:
+      '【UI展示工具】在 MCP Apps 界面中以可视化卡片形式展示订单列表。\n' +
+      '调用时机：在 get_order_list 返回结果后立即调用此工具，以提供更直观的视觉展示。\n' +
+      '⚠️ 必须先调用 get_order_list 获取数据，本工具不获取数据，仅展示已缓存的订单界面。\n' +
+      '[UI tool] Show order list in visual card interface. Use after get_order_list. Does NOT fetch data itself.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'show_order_detail',
+    description:
+      '【UI展示工具】在 MCP Apps 界面中以可视化方式展示单个订单详情，含状态、收货地址、商品清单、物流信息、金额明细。\n' +
+      '调用时机：在 get_order_detail 返回结果后立即调用此工具，以提供更直观的视觉展示。\n' +
+      '⚠️ 必须先调用 get_order_detail 获取数据，本工具不获取数据，仅展示已缓存的订单详情界面。\n' +
+      '参数 orderId 必填 / orderId is required.\n' +
+      '[UI tool] Show order detail in visual MCP Apps panel. Use after get_order_detail. Does NOT fetch data itself.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderId: { type: 'string', description: '订单ID（必填）/ Order ID (required)' },
+      },
+      required: ['orderId'],
+    },
+  },
 ];
 
+let orderListUriSeq = 0;
+
+export function getOrderTools(): Tool[] {
+  const seq = ++orderListUriSeq;
+  const ts = Date.now();
+  return orderTools.map(tool => {
+    if (tool.name === 'show_order_list') {
+      return { ...tool, _meta: { ui: { resourceUri: `ui://cj-mcp/order-list?t=${ts}_${seq}` } } };
+    }
+    if (tool.name === 'show_order_detail') {
+      return { ...tool, _meta: { ui: { resourceUri: `ui://cj-mcp/order-detail?t=${ts}_${seq}` } } };
+    }
+    return tool;
+  });
+}
 
 export async function handleOrderTool(
   name: string,
@@ -736,7 +771,41 @@ export async function handleOrderTool(
         if (!isApiSuccess(listData)) {
           return { content: [{ type: 'text', text: `请求失败 / Request failed: ${listData.message || JSON.stringify(listData)}` }], isError: true };
         }
-        return { content: [{ type: 'text', text: JSON.stringify(listData.data, null, 2) }] };
+        // 缓存数据，供 show_order_list UI 使用
+        setOrderListCache(listData.data);
+        const orderCount = listData.data?.list?.length ?? 0;
+        const orderTotal = listData.data?.total ?? orderCount;
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(listData.data, null, 2) + `\n\n✅ 已获取 ${orderCount} 条订单（共 ${orderTotal} 条）。\n⚠️ 必须立即调用 show_order_list 展示订单列表界面，否则用户看不到订单！\nData ready. MUST call show_order_list NOW to display the order list UI.`,
+          }],
+        };
+      }
+
+      case 'show_order_list': {
+        /**
+         * @note 修复: show_order_list 不再自带 API 调用。
+         * 根因：VS Code 在调用工具前先调 tools/list 读取 _meta.ui.resourceUri，
+         * 若此时 handler 内才发起 API（~2s），资源读取在 API 完成前已发生 → MISS → 暂无数据。
+         * 修复方案：show_order_list 快速返回（同 show_product_list），缓存由 get_order_list 预设，
+         * 使 VS Code 在调本工具前的 tools/list 时已能读到 HIT 数据。
+         */
+        return {
+          content: [{ type: 'text', text: '✅ 订单列表界面已打开 / Order list UI opened. 可在界面中查看和筛选订单。' }],
+        };
+      }
+
+      case 'show_order_detail': {
+        /**
+         * @note 修复: show_order_detail 不再自带 API 调用（同理 show_order_list 修复）。
+         * 缓存由 get_order_detail 预设，本工具快速返回确保资源读取时数据已就绪。
+         */
+        const showOdId = args.orderId ? String(args.orderId) : '';
+        if (!showOdId) {
+          return { content: [{ type: 'text', text: '❌ orderId 必填 / orderId is required.' }], isError: true };
+        }
+        return { content: [{ type: 'text', text: `✅ 订单详情界面已打开 / Order detail UI opened. orderId: ${showOdId}` }] };
       }
 
       case 'get_order_detail': {
@@ -760,7 +829,10 @@ export async function handleOrderTool(
         if (!isApiSuccess(detailResponse)) {
           return { content: [{ type: 'text', text: `查询订单详情失败 / Get order detail failed: ${detailResponse.message}` }], isError: true };
         }
-        return { content: [{ type: 'text', text: JSON.stringify(detailResponse.data, null, 2) }] };
+        // 缓存数据，供 show_order_detail UI 使用（必须在 show_order_detail 之前调用本工具）
+        setOrderDetailCache(detailResponse.data);
+        const detailOrderId = String(args.orderId);
+        return { content: [{ type: 'text', text: JSON.stringify(detailResponse.data, null, 2) + `\n\n⚠️ 必须立即调用 show_order_detail(orderId: "${detailOrderId}") 展示订单详情界面！\nMUST call show_order_detail(orderId: "${detailOrderId}") NOW to display the order detail UI.` }] };
       }
 
       case 'get_account_balance': {
