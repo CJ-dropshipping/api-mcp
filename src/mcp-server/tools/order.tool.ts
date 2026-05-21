@@ -385,11 +385,10 @@ export const orderTools: Tool[] = [
   {
     name: 'show_order_detail',
     description:
-      '【UI展示工具】在 MCP Apps 界面中以可视化方式展示单个订单详情，含状态、收货地址、商品清单、物流信息、金额明细。\n' +
+      '【UI展示工具 - 只读】在 MCP Apps 界面中以可视化方式展示单个订单详情，含状态、收货地址、商品清单、物流信息、金额明细。\n' +
       '调用时机：在 get_order_detail 返回结果后立即调用此工具，以提供更直观的视觉展示。\n' +
-      '⚠️ 必须先调用 get_order_detail 获取数据，本工具不获取数据，仅展示已缓存的订单详情界面。\n' +
-      '参数 orderId 必填 / orderId is required.\n' +
-      '[UI tool] Show order detail in visual MCP Apps panel. Use after get_order_detail. Does NOT fetch data itself.',
+      '本工具为只读展示，不修改任何数据。参数 orderId 必填。\n' +
+      '[UI tool - READ ONLY] Show order detail in visual MCP Apps panel. Use after get_order_detail. Read-only, no data modification.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -402,24 +401,34 @@ export const orderTools: Tool[] = [
 
 let orderListUriSeq = 0;
 
+const READ_ONLY_ORDER_TOOLS = new Set([
+  'get_order_list', 'get_pay_order_list', 'get_order_detail',
+  'get_account_balance', 'get_merge_progress', 'query_cogs',
+  'show_order_list', 'show_order_detail',
+]);
+
 export function getOrderTools(): Tool[] {
   const seq = ++orderListUriSeq;
   const ts = Date.now();
   return orderTools.map(tool => {
+    const annotations = READ_ONLY_ORDER_TOOLS.has(tool.name) ? { readOnlyHint: true } : undefined;
     if (tool.name === 'show_order_list') {
-      return { ...tool, _meta: { ui: { resourceUri: `ui://cj-mcp/order-list?t=${ts}_${seq}` } } };
+      return { ...tool, annotations, _meta: { ui: { resourceUri: `ui://cj-mcp/order-list?t=${ts}_${seq}` } } };
     }
     if (tool.name === 'show_order_detail') {
-      return { ...tool, _meta: { ui: { resourceUri: `ui://cj-mcp/order-detail?t=${ts}_${seq}` } } };
+      return { ...tool, annotations, _meta: { ui: { resourceUri: `ui://cj-mcp/order-detail?t=${ts}_${seq}` } } };
     }
-    return tool;
+    return annotations ? { ...tool, annotations } : tool;
   });
 }
+
+/** 工具返回类型：支持 text/resource content + _meta */
+type OrderToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; _meta?: Record<string, unknown> };
 
 export async function handleOrderTool(
   name: string,
   args: Record<string, unknown>
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<OrderToolResult> {
   const token = await ensureAccessToken();
   if (!token) {
     return {
@@ -775,37 +784,43 @@ export async function handleOrderTool(
         setOrderListCache(listData.data);
         const orderCount = listData.data?.list?.length ?? 0;
         const orderTotal = listData.data?.total ?? orderCount;
+
+        const orderListUri = `ui://cj-mcp/order-list?t=${Date.now()}`;
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(listData.data, null, 2) + `\n\n✅ 已获取 ${orderCount} 条订单（共 ${orderTotal} 条）。\n⚠️ 必须立即调用 show_order_list 展示订单列表界面，否则用户看不到订单！\nData ready. MUST call show_order_list NOW to display the order list UI.`,
-          }],
+          content: [
+            { type: 'text', text: JSON.stringify(listData.data, null, 2) + `\n\n✅ 已获取 ${orderCount} 条订单（共 ${orderTotal} 条）。` },
+          ],
+          _meta: { ui: { resourceUri: orderListUri } },
         };
       }
 
       case 'show_order_list': {
-        /**
-         * @note 修复: show_order_list 不再自带 API 调用。
-         * 根因：VS Code 在调用工具前先调 tools/list 读取 _meta.ui.resourceUri，
-         * 若此时 handler 内才发起 API（~2s），资源读取在 API 完成前已发生 → MISS → 暂无数据。
-         * 修复方案：show_order_list 快速返回（同 show_product_list），缓存由 get_order_list 预设，
-         * 使 VS Code 在调本工具前的 tools/list 时已能读到 HIT 数据。
-         */
+        const olUri = `ui://cj-mcp/order-list?t=${Date.now()}`;
         return {
-          content: [{ type: 'text', text: '✅ 订单列表界面已打开 / Order list UI opened. 可在界面中查看和筛选订单。' }],
+          content: [{ type: 'text', text: '✅ 订单列表界面已打开 / Order list UI opened.' }],
+          _meta: { ui: { resourceUri: olUri } },
         };
       }
 
       case 'show_order_detail': {
-        /**
-         * @note 修复: show_order_detail 不再自带 API 调用（同理 show_order_list 修复）。
-         * 缓存由 get_order_detail 预设，本工具快速返回确保资源读取时数据已就绪。
-         */
         const showOdId = args.orderId ? String(args.orderId) : '';
         if (!showOdId) {
           return { content: [{ type: 'text', text: '❌ orderId 必填 / orderId is required.' }], isError: true };
         }
-        return { content: [{ type: 'text', text: `✅ 订单详情界面已打开 / Order detail UI opened. orderId: ${showOdId}` }] };
+        // 直接调用 API 获取数据并设置缓存（确保资源读取时数据已就绪）
+        const odDetailResp = await httpClient.request(ENDPOINTS.shopping.getOrderDetail, {
+          method: 'GET',
+          params: { orderId: showOdId },
+          tier: 'read',
+        });
+        if (isApiSuccess(odDetailResp) && odDetailResp.data) {
+          setOrderDetailCache(odDetailResp.data);
+        }
+        const odUri = `ui://cj-mcp/order-detail?t=${Date.now()}`;
+        return {
+          content: [{ type: 'text', text: `✅ 订单详情界面已打开 / Order detail UI opened. orderId: ${showOdId}` }],
+          _meta: { ui: { resourceUri: odUri } },
+        };
       }
 
       case 'get_order_detail': {
@@ -832,7 +847,14 @@ export async function handleOrderTool(
         // 缓存数据，供 show_order_detail UI 使用（必须在 show_order_detail 之前调用本工具）
         setOrderDetailCache(detailResponse.data);
         const detailOrderId = String(args.orderId);
-        return { content: [{ type: 'text', text: JSON.stringify(detailResponse.data, null, 2) + `\n\n⚠️ 必须立即调用 show_order_detail(orderId: "${detailOrderId}") 展示订单详情界面！\nMUST call show_order_detail(orderId: "${detailOrderId}") NOW to display the order detail UI.` }] };
+
+        const orderDetailUri = `ui://cj-mcp/order-detail?t=${Date.now()}`;
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(detailResponse.data, null, 2) + `\n\n✅ 订单详情已获取 orderId: "${detailOrderId}"` },
+          ],
+          _meta: { ui: { resourceUri: orderDetailUri } },
+        };
       }
 
       case 'get_account_balance': {

@@ -83,12 +83,12 @@ export function registerTools(): void {
 export function getToolsList(): Tool[] {
   // getAuthTools() 每次调用都动态返回认证工具列表（wait_for_login 含动态 resourceUri）
   // getProductTools() 每次调用都动态返回商品工具列表（show_product_detail 含动态 pid resourceUri）
-  const orderUiToolNames = ['show_order_list', 'show_order_detail'];
-  const nonProductStatic = [
-    ...logisticsTools, ...orderTools, ...disputeTools,
+  // getOrderTools() 动态返回订单工具列表（含 annotations + 动态 resourceUri）
+  const nonDynamic = [
+    ...logisticsTools, ...disputeTools,
     ...shopTools, ...stockTools, ...webhookTools, ...navigateTools,
   ];
-  return [...getAuthTools(), ...getProductTools(), ...getOrderTools().filter(t => orderUiToolNames.includes(t.name)), ...nonProductStatic.filter(t => !orderUiToolNames.includes(t.name))];
+  return [...getAuthTools(), ...getProductTools(), ...getOrderTools(), ...nonDynamic];
 }
 
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {

@@ -106,6 +106,14 @@ export const productTools: Tool[] = [
           type: 'number',
           description: '每页数量，默认20，最大100 / Page size, default 20, max 100',
         },
+        startWarehouseInventory: {
+          type: 'number',
+          description:
+            '起始库存下限（≥1），默认为1，只搜索有库存的商品。\n' +
+            '用户说「库存大于N」「库存至少N件」「库存不低于N」→ 传入对应数值（最小为1）。\n' +
+            'Minimum warehouse inventory (≥1), default 1. Only returns products with stock. ' +
+            'User: "stock > N" / "at least N in stock" → pass N (min 1).',
+        },
       },
       required: [],
     },
@@ -452,14 +460,24 @@ let productUriSeq = 0;
  * - get_product_detail 注入 _meta.ui.resourceUri: ui://cj-mcp/product-detail?pid=...&t=...
  * - show_product_list / show_product_detail 同样动态注入唯一 URI
  * 这样工具被调用时，MCP 客户端会直接显示 UI，并通过 resources 注入初始数据。
+ * - 所有只读工具注入 annotations.readOnlyHint=true，避免 ChatGPT 每次调用都弹确认框。
  */
+const READ_ONLY_PRODUCT_TOOLS = new Set([
+  'search_products', 'get_category_tree', 'get_warehouses', 'get_product_detail',
+  'query_cj_inventory', 'get_my_products', 'get_product_variants',
+  'query_sourcing', 'list_product_connections', 'get_product_reviews',
+  'search_products_by_image', 'show_product_list', 'show_product_detail',
+]);
+
 export function getProductTools(): Tool[] {
   const seq = ++productUriSeq;
   const ts = Date.now();
   return productTools.map(tool => {
+    const annotations = READ_ONLY_PRODUCT_TOOLS.has(tool.name) ? { readOnlyHint: true } : undefined;
     if (tool.name === 'show_product_list') {
       return {
         ...tool,
+        annotations,
         _meta: { ui: { resourceUri: `ui://cj-mcp/product-list?t=${ts}_${seq}` } },
       };
     }
@@ -467,17 +485,21 @@ export function getProductTools(): Tool[] {
       const pid = lastProductDetailPid;
       return {
         ...tool,
+        annotations,
         _meta: { ui: { resourceUri: `ui://cj-mcp/product-detail${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
       };
     }
-    return tool;
+    return annotations ? { ...tool, annotations } : tool;
   });
 }
+
+/** 工具返回类型：支持 text/resource content + _meta */
+type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; _meta?: Record<string, unknown> };
 
 export async function handleProductTool(
   name: string,
   args: Record<string, unknown>
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<ToolResult> {
   // 检查登录态
   const token = await ensureAccessToken();
   if (!token) {
@@ -500,10 +522,13 @@ export async function handleProductTool(
         return await handleGetWarehouses();
       case 'get_product_detail':
         return await handleGetProductDetail(args);
-      case 'show_product_list':
+      case 'show_product_list': {
+        const plUri = `ui://cj-mcp/product-list?t=${Date.now()}`;
         return {
-          content: [{ type: 'text', text: '✅ 商品列表界面已打开 / Product list UI opened. 用户可在界面中搜索和浏览商品。' }],
+          content: [{ type: 'text', text: '✅ 商品列表界面已打开 / Product list UI opened.' }],
+          _meta: { ui: { resourceUri: plUri } },
         };
+      }
       case 'show_product_detail': {
         const pid = args.pid ? String(args.pid) : '';
         if (!pid) {
@@ -517,8 +542,10 @@ export async function handleProductTool(
         if (detailResult.isError) {
           return detailResult;
         }
+        const pdUri = `ui://cj-mcp/product-detail?t=${Date.now()}`;
         return {
           content: [{ type: 'text', text: `✅ 商品详情界面已打开 / Product detail UI opened. pid: ${pid}` }],
+          _meta: { ui: { resourceUri: pdUri } },
         };
       }
       case 'query_cj_inventory':
@@ -579,6 +606,9 @@ async function handleSearchProducts(args: Record<string, unknown>) {
   if (args.orderBy != null) params.orderBy = String(args.orderBy);
   params.page = String((args.pageNum as number) || 1);
   params.size = String(Math.min((args.pageSize as number) || 20, 100));
+  // 起始库存：默认 1（只搜索有库存商品），用户指定时取 max(用户值, 1)
+  const userInventory = args.startWarehouseInventory != null ? Number(args.startWarehouseInventory) : 1;
+  params.startWarehouseInventory = String(Math.max(userInventory, 1));
 
   const response = await httpClient.request(ENDPOINTS.product.listV2, {
     method: 'GET',
@@ -620,12 +650,16 @@ async function handleSearchProducts(args: Record<string, unknown>) {
   const totalRecords = (response.data as Record<string, unknown> | null)?.totalRecords || 0;
   // 缓存数据供 UI 资源注入使用（MCP Apps 打开时通过 window.__INITIAL_DATA__ 获取数据）
   setProductListCache(response.data);
+
+  const resourceUri = `ui://cj-mcp/product-list?t=${Date.now()}`;
   return {
-    content: [{ type: 'text', text:
-      `📋 Found ${totalRecords} products total. Data cached for UI display.\n` +
-      `💡 Please call **show_product_list** to display the product cards in MCP Apps UI.\n\n` +
-      JSON.stringify(response.data, null, 2),
-    }],
+    content: [
+      { type: 'text', text:
+        `📋 Found ${totalRecords} products total.\n\n` +
+        JSON.stringify(response.data, null, 2),
+      },
+    ],
+    _meta: { ui: { resourceUri } },
   };
 }
 
@@ -712,12 +746,12 @@ async function handleGetProductDetail(args: Record<string, unknown>) {
     setProductDetailCache(response.data);
   }
 
+  const detailResourceUri = `ui://cj-mcp/product-detail?t=${Date.now()}`;
   return {
-    content: [{ type: 'text', text:
-      `🔍 Product detail loaded. Data cached for UI display.\n` +
-      `💡 Please call **show_product_detail** to display the product in MCP Apps UI.\n\n` +
-      JSON.stringify(response.data, null, 2),
-    }],
+    content: [
+      { type: 'text', text: `🔍 Product detail loaded.\n\n` + JSON.stringify(response.data, null, 2) },
+    ],
+    _meta: { ui: { resourceUri: detailResourceUri } },
   };
 }
 
