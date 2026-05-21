@@ -83,7 +83,8 @@ function createMCPServer(): Server {
   }));
 
   mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    return handleResourceRead(request.params.uri);
+    logger.debug(`[RESOURCE] Reading URI: ${request.params.uri}`);
+    return await handleResourceRead(request.params.uri);
   });
 
   return mcpServer;

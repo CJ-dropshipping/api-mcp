@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CJ Order Detail</title>
+  <style>
+    :root {
+      --cj-primary: #FF7700;
+      --cj-primary-light: #FFF1E5;
+      --cj-text: #333333;
+      --cj-text-secondary: #666666;
+      --cj-border: #E0E0E0;
+      --cj-bg: #F5F5F5;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--cj-bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: var(--cj-primary);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .header img { width: 24px; height: 24px; background: #fff; border-radius: 5px; }
+    .header h1 { color: #fff; font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .status-bar {
+      background: #fff;
+      padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .order-id-block { font-size: 12px; }
+    .order-id-block .main { font-weight: 600; color: var(--cj-text); }
+    .order-id-block .sub { color: #bbb; font-size: 10px; margin-top: 2px; }
+    .status-badge {
+      font-size: 11px; padding: 3px 10px; border-radius: 10px; font-weight: 600;
+    }
+    .status-CREATED { background: #E6F7FF; color: #1890FF; }
+    .status-IN_CART { background: #F5F5F5; color: #8C8C8C; }
+    .status-UNPAID { background: #FFFBE6; color: #FAAD14; }
+    .status-UNSHIPPED { background: #F9F0FF; color: #722ED1; }
+    .status-SHIPPED { background: #F6FFED; color: #52C41A; }
+    .status-DELIVERED { background: #E6FFFB; color: #13C2C2; }
+    .status-CANCELLED { background: #F5F5F5; color: #8C8C8C; }
+    .status-OTHER { background: #F5F5F5; color: #bbb; }
+
+    .section { background: #fff; margin-top: 6px; padding: 12px 14px; }
+    .section-title {
+      font-size: 13px; font-weight: 600; color: var(--cj-text);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .section-title::before {
+      content: ''; display: inline-block; width: 3px; height: 13px;
+      background: var(--cj-primary); border-radius: 2px;
+    }
+    .info-row {
+      display: flex; align-items: flex-start; padding: 5px 0;
+      border-bottom: 1px solid #f5f5f5; font-size: 12px; gap: 6px;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .label { color: var(--cj-text-secondary); min-width: 82px; flex-shrink: 0; }
+    .info-row .value { color: var(--cj-text); font-weight: 500; flex: 1; word-break: break-all; }
+    .info-row .value a { color: var(--cj-primary); text-decoration: none; }
+
+    .amount-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;
+    }
+    .amount-item { background: #fafafa; border-radius: 6px; padding: 8px 10px; }
+    .amount-item .amt-label { font-size: 10px; color: var(--cj-text-secondary); margin-bottom: 2px; }
+    .amount-item .amt-value { font-size: 14px; font-weight: 700; color: var(--cj-primary); }
+    .amount-item .amt-value.neutral { color: var(--cj-text); }
+
+    .track-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #F6FFED; color: #52C41A; font-size: 10px;
+      padding: 2px 7px; border-radius: 4px; margin-right: 6px;
+    }
+
+    .product-list { display: flex; flex-direction: column; gap: 6px; }
+    .product-item {
+      border: 1px solid var(--cj-border); border-radius: 6px;
+      padding: 8px 10px; font-size: 12px;
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .product-item .p-index {
+      width: 20px; height: 20px; min-width: 20px;
+      background: var(--cj-primary-light); color: var(--cj-primary);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 600; flex-shrink: 0; margin-top: 1px;
+    }
+    .product-item .p-info { flex: 1; min-width: 0; }
+    .product-item .p-vid { font-size: 10px; color: #bbb; margin-bottom: 3px; word-break: break-all; }
+    .product-item .p-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+    .product-item .p-meta .m { display: flex; flex-direction: column; }
+    .product-item .p-meta .m-label { font-size: 9px; color: #bbb; }
+    .product-item .p-meta .m-value { font-size: 11px; font-weight: 600; color: var(--cj-text); }
+    .product-item .p-meta .m-value.price { color: var(--cj-primary); }
+    .prod-status-badge {
+      display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px;
+      background: #E6F7FF; color: #1890FF; margin-top: 3px;
+    }
+
+    .timeliness-list { display: flex; flex-direction: column; gap: 4px; }
+    .timeliness-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; background: #fafafa; border-radius: 4px; font-size: 12px;
+    }
+    .timeliness-item .t-name { color: var(--cj-text); flex: 1; }
+    .timeliness-item .t-time { color: var(--cj-primary); font-weight: 600; font-size: 11px; }
+
+    .intercept-item {
+      background: #FFF2F0; border: 1px solid #FFCCC7; border-radius: 4px;
+      padding: 6px 10px; font-size: 12px; margin-bottom: 4px;
+    }
+    .intercept-item .i-code { color: #FF4D4F; font-weight: 600; margin-bottom: 2px; font-size: 10px; }
+    .intercept-item .i-msg { color: var(--cj-text); }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--cj-text-secondary); font-size: 13px; }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+    .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--cj-primary-light); color: var(--cj-primary); margin-left: 4px; }
+    .complete-badge { background: #F6FFED; color: #52C41A; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="https://frontend.cjdropshipping.com/cj-web-egg-config-resource/cj/favicon.ico" alt="CJ" onerror="this.style.display='none'">
+    <h1 id="headerTitle">Order Detail / 订单详情</h1>
+  </div>
+  <div id="mainContent">
+    <div class="empty-state"><div class="icon">📦</div><div>Loading... / 加载中...</div></div>
+  </div>
+
+  <script>
+    (function() {
+      function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      var STATUS_LABELS = {
+        'CREATED': 'Created', 'IN_CART': 'In Cart', 'UNPAID': 'Unpaid',
+        'UNSHIPPED': 'Unshipped', 'SHIPPED': 'Shipped', 'DELIVERED': 'Delivered',
+        'CANCELLED': 'Cancelled', 'OTHER': 'Other'
+      };
+      var STATUS_ICONS = {
+        'CREATED': '🆕', 'IN_CART': '🛒', 'UNPAID': '💳',
+        'UNSHIPPED': '📦', 'SHIPPED': '🚀', 'DELIVERED': '✅',
+        'CANCELLED': '❌', 'OTHER': '❓'
+      };
+      var PROD_STATUS = {
+        1: 'Pending Order', 2: 'Pending Production', 3: 'In Production',
+        4: 'Production Done', 5: 'Production Abnormal'
+      };
+
+      function fmtAmount(val) {
+        if (val == null || val === '') return null;
+        return '$' + Number(val).toFixed(2);
+      }
+
+      function renderDetail(d) {
+        if (!d) {
+          document.getElementById('mainContent').innerHTML =
+            '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据</div></div>';
+          return;
+        }
+
+        var status = d.orderStatus || 'OTHER';
+        var statusLabel = STATUS_LABELS[status] || status;
+        var statusIcon = STATUS_ICONS[status] || '❓';
+        var statusClass = 'status-' + (STATUS_LABELS[status] ? status : 'OTHER');
+        var orderNum = d.orderNum || d.orderId || '';
+        var isComplete = d.isComplete === 1;
+
+        document.getElementById('headerTitle').textContent = 'Order: ' + orderNum;
+
+        var html = '';
+
+        // ── 状态栏 ──
+        html += '<div class="status-bar">';
+        html += '<div class="order-id-block">';
+        html += '<div class="main">' + escHtml(orderNum);
+        if (d.cjOrderId) html += '<span class="badge">CJ: ' + escHtml(d.cjOrderId) + '</span>';
+        if (isComplete) html += '<span class="badge complete-badge">Complete ✓</span>';
+        html += '</div>';
+        if (d.platformOrderId) html += '<div class="sub">Store: ' + escHtml(d.platformOrderId) + '</div>';
+        if (d.cjOrderCode) html += '<div class="sub">CJ Code: ' + escHtml(d.cjOrderCode) + '</div>';
+        html += '</div>';
+        html += '<span class="status-badge ' + statusClass + '">' + statusIcon + ' ' + escHtml(statusLabel) + '</span>';
+        html += '</div>';
+
+        // ── 金额 ──
+        html += '<div class="section">';
+        html += '<div class="section-title">💰 Amount / 金额</div>';
+        html += '<div class="amount-grid">';
+        var amounts = [
+          { label: 'Order Total', val: d.orderAmount },
+          { label: 'Product', val: d.productAmount },
+          { label: 'Shipping', val: d.postageAmount },
+        ];
+        amounts.forEach(function(a) {
+          var v = fmtAmount(a.val);
+          if (v) {
+            html += '<div class="amount-item"><div class="amt-label">' + escHtml(a.label) + '</div>';
+            html += '<div class="amt-value">' + escHtml(v) + '</div></div>';
+          }
+        });
+        html += '</div>';
+        html += '</div>';
+
+        // ── 物流 ──
+        html += '<div class="section">';
+        html += '<div class="section-title">🚚 Logistics / 物流</div>';
+        if (d.logisticName) {
+          html += '<div class="info-row"><span class="label">Carrier</span><span class="value">' + escHtml(d.logisticName) + '</span></div>';
+        }
+        if (d.trackNumber) {
+          html += '<div class="info-row"><span class="label">Tracking</span><span class="value">';
+          html += '<span class="track-badge">📍 ' + escHtml(d.trackNumber) + '</span>';
+          if (d.trackingUrl) {
+            html += '<a href="' + escHtml(d.trackingUrl) + '" target="_blank">Track →</a>';
+          }
+          html += '</span></div>';
+        }
+        if (d.fromCountryCode) {
+          html += '<div class="info-row"><span class="label">Ship From</span><span class="value">' + escHtml(d.fromCountryCode) + '</span></div>';
+        }
+        if (d.storageName) {
+          html += '<div class="info-row"><span class="label">Warehouse</span><span class="value">' + escHtml(d.storageName) + '</span></div>';
+        }
+        if (d.outWarehouseTime) {
+          html += '<div class="info-row"><span class="label">Shipped At</span><span class="value">' + escHtml(d.outWarehouseTime) + '</span></div>';
+        }
+        html += '</div>';
+
+        // ── 收货地址 ──
+        html += '<div class="section">';
+        html += '<div class="section-title">📍 Shipping Address / 收货地址</div>';
+        if (d.shippingCustomerName) html += '<div class="info-row"><span class="label">Recipient</span><span class="value">' + escHtml(d.shippingCustomerName) + '</span></div>';
+        if (d.shippingPhone) html += '<div class="info-row"><span class="label">Phone</span><span class="value">' + escHtml(d.shippingPhone) + '</span></div>';
+        var loc = [d.shippingCity || d.shippingProvince, d.shippingCountryCode].filter(Boolean).join(', ');
+        if (loc) html += '<div class="info-row"><span class="label">Location</span><span class="value">' + escHtml(loc) + '</span></div>';
+        if (d.shippingAddress) html += '<div class="info-row"><span class="label">Address</span><span class="value">' + escHtml(d.shippingAddress) + '</span></div>';
+        html += '</div>';
+
+        // ── 时间信息 ──
+        html += '<div class="section">';
+        html += '<div class="section-title">🕒 Dates / 时间</div>';
+        if (d.createDate) html += '<div class="info-row"><span class="label">Created</span><span class="value">' + escHtml(d.createDate) + '</span></div>';
+        if (d.paymentDate) html += '<div class="info-row"><span class="label">Paid At</span><span class="value">' + escHtml(d.paymentDate) + '</span></div>';
+        if (d.storeCreateDate) html += '<div class="info-row"><span class="label">Store Order</span><span class="value">' + escHtml(d.storeCreateDate) + '</span></div>';
+        if (d.remark) html += '<div class="info-row"><span class="label">Remark</span><span class="value">' + escHtml(d.remark) + '</span></div>';
+        if (d.disputeId) html += '<div class="info-row"><span class="label">Dispute ID</span><span class="value">' + escHtml(d.disputeId) + '</span></div>';
+        html += '</div>';
+
+        // ── 商品列表 ──
+        var products = d.productList || [];
+        if (products.length > 0) {
+          html += '<div class="section">';
+          html += '<div class="section-title">🛍️ Products / 商品 (' + products.length + ')</div>';
+          html += '<div class="product-list">';
+          products.forEach(function(p, i) {
+            html += '<div class="product-item">';
+            html += '<div class="p-index">' + (i + 1) + '</div>';
+            html += '<div class="p-info">';
+            if (p.vid) html += '<div class="p-vid">VID: ' + escHtml(p.vid) + '</div>';
+            if (p.lineItemId) html += '<div class="p-vid">Line Item: ' + escHtml(p.lineItemId) + '</div>';
+            html += '<div class="p-meta">';
+            if (p.quantity != null) {
+              html += '<div class="m"><span class="m-label">Qty</span><span class="m-value">×' + escHtml(String(p.quantity)) + '</span></div>';
+            }
+            if (p.sellPrice != null) {
+              html += '<div class="m"><span class="m-label">Price</span><span class="m-value price">' + escHtml(fmtAmount(p.sellPrice) || String(p.sellPrice)) + '</span></div>';
+            }
+            if (p.storeLineItemId) {
+              html += '<div class="m"><span class="m-label">Store Item</span><span class="m-value">' + escHtml(p.storeLineItemId) + '</span></div>';
+            }
+            html += '</div>';
+            if (p.productionOrderStatus != null) {
+              var ps = PROD_STATUS[p.productionOrderStatus] || ('Status ' + p.productionOrderStatus);
+              html += '<span class="prod-status-badge">⚙️ ' + escHtml(ps) + '</span>';
+            }
+            html += '</div></div>';
+          });
+          html += '</div></div>';
+        }
+
+        // ── 物流时效 ──
+        var timelines = (d.logisticsTimeliness && d.logisticsTimeliness.logisticsModes) || [];
+        if (timelines.length > 0) {
+          html += '<div class="section">';
+          html += '<div class="section-title">⏱️ Delivery Estimate / 物流时效</div>';
+          html += '<div class="timeliness-list">';
+          timelines.forEach(function(t) {
+            html += '<div class="timeliness-item"><span class="t-name">' + escHtml(t.logisticsName || '') + '</span>';
+            html += '<span class="t-time">' + escHtml(t.arrivalTime || '') + '</span></div>';
+          });
+          html += '</div></div>';
+        }
+
+        // ── 拦截原因 ──
+        var intercepts = d.interceptOrderReasons || [];
+        if (intercepts.length > 0) {
+          html += '<div class="section">';
+          html += '<div class="section-title">⚠️ Intercept Reasons / 拦截原因</div>';
+          intercepts.forEach(function(r) {
+            html += '<div class="intercept-item"><div class="i-code">Code: ' + escHtml(String(r.code || '')) + '</div>';
+            html += '<div class="i-msg">' + escHtml(r.message || '') + '</div></div>';
+          });
+          html += '</div>';
+        }
+
+        document.getElementById('mainContent').innerHTML = html;
+      }
+
+      if (typeof window.__INITIAL_DATA__ !== 'undefined' && window.__INITIAL_DATA__) {
+        renderDetail(window.__INITIAL_DATA__);
+      } else {
+        document.getElementById('mainContent').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据<br>' +
+          '<small style="color:#ccc;font-size:10px">Call show_order_detail with an orderId to load data</small></div></div>';
+      }
+    })();
+  </script>
+</body>
+</html>

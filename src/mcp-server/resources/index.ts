@@ -5,6 +5,12 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { logger } from '../../utils/logger.js';
+import { httpClient, isApiSuccess } from '../../api-client/http-client.js';
+import { ENDPOINTS, API_VERSION_PREFIX } from '../../api-client/endpoints.js';
+import { getAccessToken } from '../../auth/session.js';
+import { getEnvConfig } from '../../config/env.js';
+import { getProductUrl } from '../../utils/product-href.js';
 
 interface Resource {
   uri: string;
@@ -20,6 +26,8 @@ interface ResourceContent {
 /** 模块级缓存：存储最近一次 search_products / get_product_detail 的数据，用于注入 UI 初始数据 */
 let cachedProductListData: unknown = null;
 let cachedProductDetailData: unknown = null;
+let cachedOrderListData: unknown = null;
+let cachedOrderDetailData: unknown = null;
 
 export function setProductListCache(data: unknown): void {
   cachedProductListData = data;
@@ -31,6 +39,14 @@ export function setProductDetailCache(data: unknown): void {
 
 export function hasProductDetailCache(): boolean {
   return cachedProductDetailData != null;
+}
+
+export function setOrderListCache(data: unknown): void {
+  cachedOrderListData = data;
+}
+
+export function setOrderDetailCache(data: unknown): void {
+  cachedOrderDetailData = data;
 }
 
 const resources: Resource[] = [
@@ -52,6 +68,18 @@ const resources: Resource[] = [
     description: 'Interactive product detail viewer. Use this to display get_product_detail results with images, variants, and pricing. / 商品详情展示页面，用于展示商品图片、规格和价格信息。',
     mimeType: 'text/html',
   },
+  {
+    uri: 'ui://cj-mcp/order-list',
+    name: 'CJ Order List',
+    description: 'Visual order list viewer. Displays order status, amounts, logistics and shipping info. / 订单列表展示页面，以卡片方式展示订单状态、金额、物流等信息。',
+    mimeType: 'text/html',
+  },
+  {
+    uri: 'ui://cj-mcp/order-detail',
+    name: 'CJ Order Detail',
+    description: 'Visual order detail viewer. Displays full order info: status, address, product list, logistics, amounts. / 订单详情展示页面，展示订单状态、收货地址、商品清单、物流信息等完整详情。',
+    mimeType: 'text/html',
+  },
 ];
 
 export function registerResources(): void {
@@ -62,7 +90,7 @@ export function getResourcesList(): Resource[] {
   return resources;
 }
 
-export function handleResourceRead(uri: string): ResourceContent {
+export async function handleResourceRead(uri: string): Promise<ResourceContent> {
   /**
    * @note 纠正(72次): 改用前缀匹配替代精确匹配。
    * 原因：getAuthTools() 现在为 wait_for_login 注入唯一时间戳 URI（如 ui://cj-mcp/login?t=1716123456789），
@@ -70,9 +98,6 @@ export function handleResourceRead(uri: string): ResourceContent {
    * 服务端读取时，只需识别基础路径 'ui://cj-mcp/login' 前缀即可，查询参数仅用于客户端唯一性标识。
    */
   if (uri.startsWith('ui://cj-mcp/login')) {
-    // 从 dist/mcp-server/ 或 src/mcp-server/resources/ 相对定位到 src/ui/login.html
-    // 构建后运行时: dist/mcp-server/index.cjs → 需要 ../../src/ui/login.html
-    // 开发时(tsx): src/mcp-server/resources/index.ts → 需要 ../../ui/login.html
     const possiblePaths = [
       join(process.cwd(), 'src', 'ui', 'login.html'),
       join(__dirname, '..', '..', 'ui', 'login.html'),
@@ -93,6 +118,11 @@ export function handleResourceRead(uri: string): ResourceContent {
   }
 
   if (uri.startsWith('ui://cj-mcp/product-list')) {
+    // 如果缓存为空且有认证上下文，自动调用 API 获取数据
+    if (!cachedProductListData) {
+      await fetchProductListFallback();
+    }
+    logger.debug(`[RESOURCE] product-list requested, cache=${cachedProductListData != null ? 'HIT' : 'MISS'}`);
     const possiblePaths = [
       join(process.cwd(), 'src', 'ui', 'product-list.html'),
       join(__dirname, '..', '..', 'ui', 'product-list.html'),
@@ -100,7 +130,6 @@ export function handleResourceRead(uri: string): ResourceContent {
     for (const htmlPath of possiblePaths) {
       try {
         let htmlContent = readFileSync(htmlPath, 'utf-8');
-        // 注入初始数据
         if (cachedProductListData) {
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
@@ -112,6 +141,7 @@ export function handleResourceRead(uri: string): ResourceContent {
   }
 
   if (uri.startsWith('ui://cj-mcp/product-detail')) {
+    logger.debug(`[RESOURCE] product-detail requested, cache=${cachedProductDetailData != null ? 'HIT' : 'MISS'}`);
     const possiblePaths = [
       join(process.cwd(), 'src', 'ui', 'product-detail.html'),
       join(__dirname, '..', '..', 'ui', 'product-detail.html'),
@@ -119,7 +149,6 @@ export function handleResourceRead(uri: string): ResourceContent {
     for (const htmlPath of possiblePaths) {
       try {
         let htmlContent = readFileSync(htmlPath, 'utf-8');
-        // 注入初始数据
         if (cachedProductDetailData) {
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
@@ -130,5 +159,121 @@ export function handleResourceRead(uri: string): ResourceContent {
     throw new Error('product-detail.html not found. Ensure src/ui/product-detail.html exists.');
   }
 
+  if (uri.startsWith('ui://cj-mcp/order-detail')) {
+    logger.debug(`[RESOURCE] order-detail requested, cache=${cachedOrderDetailData != null ? 'HIT' : 'MISS'}`);
+    const possiblePaths = [
+      join(process.cwd(), 'src', 'ui', 'order-detail.html'),
+      join(__dirname, '..', '..', 'ui', 'order-detail.html'),
+    ];
+    for (const htmlPath of possiblePaths) {
+      try {
+        let htmlContent = readFileSync(htmlPath, 'utf-8');
+        if (cachedOrderDetailData) {
+          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderDetailData)};</script>`;
+          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
+        }
+        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+      } catch { continue; }
+    }
+    throw new Error('order-detail.html not found. Ensure src/ui/order-detail.html exists.');
+  }
+
+  if (uri.startsWith('ui://cj-mcp/order-list')) {
+    // 如果缓存为空且有认证上下文，自动调用 API 获取数据
+    if (!cachedOrderListData) {
+      await fetchOrderListFallback();
+    }
+    logger.debug(`[RESOURCE] order-list requested, cache=${cachedOrderListData != null ? 'HIT' : 'MISS'}`);
+    const possiblePaths = [
+      join(process.cwd(), 'src', 'ui', 'order-list.html'),
+      join(__dirname, '..', '..', 'ui', 'order-list.html'),
+    ];
+    for (const htmlPath of possiblePaths) {
+      try {
+        let htmlContent = readFileSync(htmlPath, 'utf-8');
+        if (cachedOrderListData) {
+          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderListData)};</script>`;
+          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
+        }
+        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+      } catch { continue; }
+    }
+    throw new Error('order-list.html not found. Ensure src/ui/order-list.html exists.');
+  }
+
   throw new Error(`Unknown resource: ${uri}`);
+}
+
+/**
+ * 当 product-list 缓存为空时，尝试自动调用 API 获取默认商品列表数据。
+ * 需要在 directTokenStorage / apiKeyStorage 上下文中执行才能成功。
+ */
+async function fetchProductListFallback(): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    logger.debug('[RESOURCE] product-list fallback: no auth token, skip auto-fetch');
+    return;
+  }
+  try {
+    logger.debug('[RESOURCE] product-list fallback: fetching from API...');
+    const response = await httpClient.request(ENDPOINTS.product.listV2, {
+      method: 'GET',
+      params: { page: '1', size: '20', isWarehouse: 'true', startWarehouseInventory: '1' },
+      tier: 'read',
+    });
+    if (isApiSuccess(response) && response.data) {
+      // 注入 productUrl
+      const config = getEnvConfig();
+      type ProductItem = Record<string, unknown>;
+      type ContentItem = { productList?: ProductItem[]; [key: string]: unknown };
+      const data = response.data as { content?: ContentItem[]; [key: string]: unknown } | null;
+      if (data && Array.isArray(data.content)) {
+        data.content = data.content.map((contentItem: ContentItem) => {
+          if (!Array.isArray(contentItem.productList)) return contentItem;
+          return {
+            ...contentItem,
+            productList: contentItem.productList.map((item: ProductItem) => ({
+              ...item,
+              productUrl: getProductUrl(config.webBase, String(item.id || ''), String(item.nameEn || '')),
+            })),
+          };
+        });
+      }
+      cachedProductListData = response.data;
+      logger.debug('[RESOURCE] product-list fallback: cache populated');
+    }
+  } catch (err) {
+    logger.debug(`[RESOURCE] product-list fallback failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * 当 order-list 缓存为空时，尝试自动调用 API 获取默认订单列表数据。
+ */
+async function fetchOrderListFallback(): Promise<void> {
+  const token = getAccessToken();
+  if (!token) {
+    logger.debug('[RESOURCE] order-list fallback: no auth token, skip auto-fetch');
+    return;
+  }
+  try {
+    logger.debug('[RESOURCE] order-list fallback: fetching from API...');
+    const env = getEnvConfig();
+    const urlParams = new URLSearchParams({ pageNum: '1', pageSize: '10' });
+    const listUrl = `${env.openApiBase}${API_VERSION_PREFIX}${ENDPOINTS.shopping.listOrder}?${urlParams.toString()}`;
+    const listResponse = await fetch(listUrl, {
+      method: 'GET',
+      headers: {
+        'CJ-Access-Token': token,
+        'Content-Type': 'application/json',
+      },
+    });
+    const listData = await listResponse.json() as { code?: number; data?: unknown; message?: string };
+    if (listData.code === 200 && listData.data) {
+      cachedOrderListData = listData.data;
+      logger.debug('[RESOURCE] order-list fallback: cache populated');
+    }
+  } catch (err) {
+    logger.debug(`[RESOURCE] order-list fallback failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

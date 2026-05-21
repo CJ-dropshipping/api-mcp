@@ -11,7 +11,7 @@ import { authTools, getAuthTools, handleAuthTool } from './auth.tool.js';
 import { productTools, getProductTools, handleProductTool } from './product.tool.js';
 import { logisticsTools, handleLogisticsTool } from './logistics.tool.js';
 import { navigateTools, handleNavigateTool } from './navigate.tool.js';
-import { orderTools, handleOrderTool } from './order.tool.js';
+import { orderTools, getOrderTools, handleOrderTool } from './order.tool.js';
 import { disputeTools, handleDisputeTool } from './dispute.tool.js';
 import { shopTools, handleShopTool } from './shop.tool.js';
 import { stockTools, handleStockTool } from './stock.tool.js';
@@ -83,11 +83,12 @@ export function registerTools(): void {
 export function getToolsList(): Tool[] {
   // getAuthTools() 每次调用都动态返回认证工具列表（wait_for_login 含动态 resourceUri）
   // getProductTools() 每次调用都动态返回商品工具列表（show_product_detail 含动态 pid resourceUri）
-  const nonProductStatic = [
-    ...logisticsTools, ...orderTools, ...disputeTools,
+  // getOrderTools() 动态返回订单工具列表（含 annotations + 动态 resourceUri）
+  const nonDynamic = [
+    ...logisticsTools, ...disputeTools,
     ...shopTools, ...stockTools, ...webhookTools, ...navigateTools,
   ];
-  return [...getAuthTools(), ...getProductTools(), ...nonProductStatic];
+  return [...getAuthTools(), ...getProductTools(), ...getOrderTools(), ...nonDynamic];
 }
 
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {

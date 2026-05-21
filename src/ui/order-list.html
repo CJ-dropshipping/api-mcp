@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CJ Order List</title>
+  <style>
+    :root {
+      --cj-primary: #FF7700;
+      --cj-primary-light: #FFF1E5;
+      --cj-text: #333333;
+      --cj-text-secondary: #666666;
+      --cj-border: #E0E0E0;
+      --cj-bg: #F5F5F5;
+      --status-created: #1890FF;
+      --status-unpaid: #FAAD14;
+      --status-unshipped: #722ED1;
+      --status-shipped: #52C41A;
+      --status-delivered: #13C2C2;
+      --status-cancelled: #8C8C8C;
+      --status-other: #D9D9D9;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--cj-bg);
+      min-height: 100vh;
+    }
+    .header {
+      background: var(--cj-primary);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .header img { width: 24px; height: 24px; background: #fff; border-radius: 5px; }
+    .header h1 { color: #fff; font-size: 15px; font-weight: 600; flex: 1; }
+    .header .badge { background: rgba(255,255,255,0.25); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+
+    .order-list { padding: 8px 8px 16px; }
+
+    .order-card {
+      background: #fff;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .order-card .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-bottom: 1px solid #f5f5f5;
+    }
+    .order-card .order-num { font-size: 12px; font-weight: 600; color: var(--cj-text); }
+    .order-card .order-num small { font-size: 10px; color: #bbb; margin-left: 4px; font-weight: 400; }
+    .status-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 500; white-space: nowrap;
+    }
+    .status-CREATED { background: #E6F7FF; color: var(--status-created); }
+    .status-IN_CART { background: #F5F5F5; color: #8C8C8C; }
+    .status-UNPAID { background: #FFFBE6; color: var(--status-unpaid); }
+    .status-UNSHIPPED { background: #F9F0FF; color: var(--status-unshipped); }
+    .status-SHIPPED { background: #F6FFED; color: var(--status-shipped); }
+    .status-DELIVERED { background: #E6FFFB; color: var(--status-delivered); }
+    .status-CANCELLED { background: #F5F5F5; color: var(--status-cancelled); }
+    .status-OTHER { background: #F5F5F5; color: #bbb; }
+
+    .order-card .card-body { padding: 8px 12px; }
+    .order-card .info-row { display: flex; align-items: flex-start; padding: 3px 0; font-size: 12px; gap: 6px; }
+    .order-card .info-row .label { color: var(--cj-text-secondary); min-width: 68px; flex-shrink: 0; }
+    .order-card .info-row .value { color: var(--cj-text); flex: 1; word-break: break-all; }
+    .order-card .info-row .value.mono { font-family: monospace; font-size: 11px; color: #555; }
+    .order-card .info-row .value a { color: var(--cj-primary); text-decoration: none; }
+
+    .order-card .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; border-top: 1px solid #f5f5f5; background: #fafafa;
+    }
+    .order-card .amount { font-size: 14px; font-weight: 700; color: var(--cj-primary); }
+    .order-card .amount small { font-size: 10px; font-weight: 400; color: #bbb; margin-left: 2px; }
+    .order-card .date { font-size: 10px; color: #bbb; }
+
+    .track-row { display: flex; align-items: center; gap: 6px; }
+    .track-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #F6FFED; color: #52C41A; white-space: nowrap; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--cj-text-secondary); font-size: 13px; }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+    .footer-info { text-align: center; padding: 8px 12px 16px; font-size: 11px; color: #BFBFBF; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="https://frontend.cjdropshipping.com/cj-web-egg-config-resource/cj/favicon.ico" alt="CJ" onerror="this.style.display='none'">
+    <h1>Order List / 订单列表</h1>
+    <span class="badge" id="totalBadge">0 orders</span>
+  </div>
+  <div class="order-list" id="orderList">
+    <div class="empty-state"><div class="icon">📦</div><div>Loading... / 加载中...</div></div>
+  </div>
+  <div class="footer-info" id="footerInfo"></div>
+
+  <script>
+    (function() {
+      function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      var STATUS_LABELS = {
+        'CREATED': 'Created', 'IN_CART': 'In Cart', 'UNPAID': 'Unpaid',
+        'UNSHIPPED': 'Unshipped', 'SHIPPED': 'Shipped', 'DELIVERED': 'Delivered',
+        'CANCELLED': 'Cancelled', 'OTHER': 'Other'
+      };
+      var STATUS_ICONS = {
+        'CREATED': '🆕', 'IN_CART': '🛒', 'UNPAID': '💳',
+        'UNSHIPPED': '📦', 'SHIPPED': '🚀', 'DELIVERED': '✅',
+        'CANCELLED': '❌', 'OTHER': '❓'
+      };
+
+      function renderOrders(orders, total, pageNum, pageSize) {
+        var list = document.getElementById('orderList');
+        document.getElementById('totalBadge').textContent = (total || orders.length) + ' orders';
+
+        if (!orders || orders.length === 0) {
+          list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>No orders found / 暂无订单</div></div>';
+          return;
+        }
+
+        list.innerHTML = orders.map(function(o) {
+          var orderId = o.orderId || '';
+          var orderNum = o.orderNum || orderId;
+          var cjOrderId = o.cjOrderId || '';
+          var status = o.orderStatus || 'OTHER';
+          var statusLabel = STATUS_LABELS[status] || status;
+          var statusIcon = STATUS_ICONS[status] || '❓';
+          var statusClass = 'status-' + (STATUS_LABELS[status] ? status : 'OTHER');
+          var country = o.shippingCountryCode || '';
+          var city = o.shippingCity || '';
+          var province = o.shippingProvince || '';
+          var customer = o.shippingCustomerName || '';
+          var address = o.shippingAddress || '';
+          var logistic = o.logisticName || '';
+          var trackNumber = o.trackNumber || '';
+          var trackingUrl = o.trackingUrl || '';
+          var createDate = o.createDate || '';
+          var paymentDate = o.paymentDate || '';
+          var orderAmount = o.orderAmount != null ? o.orderAmount : null;
+          var productAmount = o.productAmount != null ? o.productAmount : null;
+          var postageAmount = o.postageAmount != null ? o.postageAmount : null;
+          var storageName = o.storageName || '';
+          var remark = o.remark || '';
+
+          var location = [city || province, country].filter(Boolean).join(', ');
+
+          return '<div class="order-card">' +
+            '<div class="card-header">' +
+              '<div class="order-num">' +
+                escHtml(orderNum) +
+                (cjOrderId ? '<small>CJ: ' + escHtml(cjOrderId) + '</small>' : '') +
+              '</div>' +
+              '<span class="status-badge ' + statusClass + '">' + statusIcon + ' ' + escHtml(statusLabel) + '</span>' +
+            '</div>' +
+            '<div class="card-body">' +
+              (customer ? '<div class="info-row"><span class="label">Customer</span><span class="value">' + escHtml(customer) + '</span></div>' : '') +
+              (location ? '<div class="info-row"><span class="label">Location</span><span class="value">' + escHtml(location) + '</span></div>' : '') +
+              (address ? '<div class="info-row"><span class="label">Address</span><span class="value">' + escHtml(address.length > 60 ? address.substring(0,60) + '...' : address) + '</span></div>' : '') +
+              (storageName ? '<div class="info-row"><span class="label">Warehouse</span><span class="value">' + escHtml(storageName) + '</span></div>' : '') +
+              (logistic ? '<div class="info-row"><span class="label">Logistics</span><span class="value">' + escHtml(logistic) + '</span></div>' : '') +
+              (trackNumber ? '<div class="info-row"><span class="label">Tracking</span><span class="value track-row"><span class="track-badge">📍 ' + escHtml(trackNumber) + '</span>' + (trackingUrl ? '<a href="' + escHtml(trackingUrl) + '" target="_blank" style="font-size:10px;color:var(--cj-primary)">Track &#x2192;</a>' : '') + '</span></div>' : '') +
+              (remark ? '<div class="info-row"><span class="label">Remark</span><span class="value">' + escHtml(remark) + '</span></div>' : '') +
+              (paymentDate ? '<div class="info-row"><span class="label">Paid At</span><span class="value">' + escHtml(paymentDate) + '</span></div>' : '') +
+            '</div>' +
+            '<div class="card-footer">' +
+              '<div>' +
+                (orderAmount != null ? '<span class="amount">$' + escHtml(String(orderAmount)) + '<small>total</small></span>' : '') +
+                (productAmount != null && orderAmount == null ? '<span class="amount">$' + escHtml(String(productAmount)) + '<small>product</small></span>' : '') +
+                (postageAmount != null ? '<span style="font-size:10px;color:#bbb;margin-left:6px">+$' + escHtml(String(postageAmount)) + ' shipping</span>' : '') +
+              '</div>' +
+              '<span class="date">' + escHtml(createDate) + '</span>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        var totalPages = pageSize > 0 ? Math.ceil((total || orders.length) / pageSize) : 1;
+        var footerParts = ['Total: ' + (total || orders.length) + ' orders'];
+        if (pageNum && totalPages > 1) footerParts.push('Page ' + pageNum + ' / ' + totalPages);
+        document.getElementById('footerInfo').textContent = footerParts.join(' · ');
+      }
+
+      if (typeof window.__INITIAL_DATA__ !== 'undefined' && window.__INITIAL_DATA__) {
+        var data = window.__INITIAL_DATA__;
+        var orders = [];
+        var total = data.total || 0;
+        var pageNum = data.pageNum || 1;
+        var pageSize = data.pageSize || 20;
+        if (Array.isArray(data.list)) {
+          orders = data.list;
+        } else if (Array.isArray(data)) {
+          orders = data;
+        }
+        renderOrders(orders, total, pageNum, pageSize);
+      } else {
+        document.getElementById('orderList').innerHTML =
+          '<div class="empty-state"><div class="icon">📭</div><div>No data / 暂无数据<br><small style="color:#ccc;font-size:10px">Data is injected by MCP server after calling list_orders</small></div></div>';
+      }
+    })();
+  </script>
+</body>
+</html>
