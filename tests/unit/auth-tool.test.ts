@@ -1,7 +1,19 @@
 /**
  * @fileoverview Auth Tool 单元测试 (Mock 外部调用)
+ *
+ * @note 纠正(支持多种登录方式): 新增 handleVerifyCredentials webLogin 响应处理测试组，
+ * 覆盖以下场景：
+ * 1. data.apiKey 存在 → getAccessToken 流程
+ * 2. data.expireTime 用于实际过期时间
+ * 3. data.extra.email 优先提取邮箱
+ * 4. data.id 提取 openId
+ * 5. 无 apiKey + 有 cjLoginToken → 直接存储
+ * @note 纠正(支持多种登录方式-补充): 新增 accessToken 主字段和 csrfToken 可选场景：
+ * 6. data.accessToken 作为主 token（优先级高于 cjLoginToken/token）
+ * 7. csrfToken GET 失败时登录仍能继续（/foreign/webLogin 不需要 csrfToken）
+ * 6. code:803 返回明确错误（mcpLogin 未开通）
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleAuthTool, getAuthTools } from '../../src/mcp-server/tools/auth.tool';
 
 // Mock session module
@@ -120,5 +132,338 @@ describe('auth.tool', () => {
     expect(meta2?.ui?.resourceUri).toMatch(/^ui:\/\/cj-mcp\/login\?t=\d+_\d+$/);
     // 两次调用的时间戳不同（唯一性），断言失败说明用户在同一对话中无法获得新的登录 UI
     expect(meta1?.ui?.resourceUri).not.toBe(meta2?.ui?.resourceUri);
+  });
+});
+
+/**
+ * @note 纠正(支持多种登录方式): verify_credentials webLogin 响应字段处理测试
+ * 覆盖 login.html UI → verify_credentials → webLogin → session 完整链路的响应处理
+ * 关键场景：expireTime 实际值使用、extra.email 提取、openId 从 id 提取、
+ *           apiKey 流程与 cjLoginToken 直存流程、code:803 错误处理
+ */
+describe('verify_credentials - webLogin 响应字段处理', () => {
+  const sessionModule = vi.hoisted(() => ({
+    getSession: vi.fn().mockReturnValue(null),
+    isSessionValid: vi.fn().mockReturnValue(false),
+    createSession: vi.fn(),
+    clearSession: vi.fn(),
+    ensureAccessToken: vi.fn().mockResolvedValue(null),
+    setSessionDirect: vi.fn().mockImplementation((data: Record<string, unknown>) => data),
+  }));
+
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.mock('../../src/auth/session', () => sessionModule);
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+    sessionModule.createSession.mockReset();
+    sessionModule.setSessionDirect.mockReset();
+    sessionModule.setSessionDirect.mockImplementation((data: Record<string, unknown>) => data);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * @note 验证 data.apiKey 存在时走 getAccessToken 流程
+   * 业务影响：apiKey 流程能获取 OpenAPI accessToken，后续 product/listV2 等接口可正常调用
+   */
+  it('webLogin 返回 apiKey 时调用 createSession 换取 OpenAPI accessToken', async () => {
+    // Mock csrfToken 请求
+    fetchMock.mockResolvedValueOnce({
+      headers: {
+        getSetCookie: () => ['csrfToken=test_csrf; Path=/'],
+        get: () => 'text/html',
+      },
+      status: 200,
+      text: async () => '',
+    });
+    // Mock webLogin 成功响应（含 apiKey）
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          apiKey: 'test_api_key_123',
+          token: 'USR@CJxxx@L5@CJ:frontend_token',
+          cjLoginToken: 'USR@CJxxx@L5@CJ:frontend_token',
+          id: 241958,
+          num: 4001234,
+          expireTime: Date.now() + 7 * 24 * 3600 * 1000,
+          extra: { email: 'test@example.com' },
+        },
+      }),
+    });
+
+    sessionModule.createSession.mockResolvedValueOnce({
+      email: 'test@example.com',
+      accessToken: 'openapi_access_token',
+      accessTokenExpiry: new Date(Date.now() + 86400_000).toISOString(),
+      refreshToken: 'refresh_token',
+      refreshTokenExpiry: new Date(Date.now() + 7 * 86400_000).toISOString(),
+      openId: '241958',
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'test@example.com',
+      password: 'plain_password',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('✅');
+    expect(result.content[0].text).toContain('登录成功');
+    // 验证 createSession 被调用，表示走了 getAccessToken 流程
+    expect(sessionModule.createSession).toHaveBeenCalledWith(
+      expect.any(String),
+      'test_api_key_123',
+      expect.any(String)
+    );
+  });
+
+  /**
+   * @note 验证无 apiKey 但有 cjLoginToken 时直接存储 session
+   * 业务影响：部分账号 webLogin 不返回 apiKey，需直接用 loginToken 调用后续接口
+   */
+  it('webLogin 无 apiKey 但有 cjLoginToken 时调用 setSessionDirect 存储', async () => {
+    fetchMock.mockResolvedValueOnce({
+      headers: { getSetCookie: () => ['csrfToken=csrf123; Path=/'], get: () => 'text/html' },
+      status: 200,
+      text: async () => '',
+    });
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          token: 'USR@CJfoo@L5@CJ:token_value',
+          cjLoginToken: 'USR@CJfoo@L5@CJ:token_value',
+          id: 99999,
+          num: 5005005,
+          expireTime: Date.now() + 14 * 24 * 3600 * 1000,
+          extra: { email: 'user@cj.com' },
+        },
+      }),
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'user@cj.com',
+      password: 'any_password',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('✅');
+    // 验证 setSessionDirect 被调用（不走 getAccessToken 流程）
+    expect(sessionModule.setSessionDirect).toHaveBeenCalled();
+    const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
+    expect(callArg.accessToken).toBe('USR@CJfoo@L5@CJ:token_value');
+    expect(callArg.openId).toBe('99999');
+  });
+
+  /**
+   * @note 验证 expireTime 被转换为 ISO 字符串存储
+   * 业务影响：isAccessTokenExpired() 能正确判断有效期，避免过早失效或使用过期 token
+   */
+  it('webLogin 返回 expireTime 时 session 的 accessTokenExpiry 使用实际值', async () => {
+    const futureTime = Date.now() + 10 * 24 * 3600 * 1000; // 10天后
+    fetchMock.mockResolvedValueOnce({
+      headers: { getSetCookie: () => ['csrfToken=csrf456; Path=/'], get: () => 'text/html' },
+      status: 200,
+      text: async () => '',
+    });
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          cjLoginToken: 'USR@CJbar@L5@CJ:token_expiry',
+          id: 12345,
+          expireTime: futureTime,
+          extra: { email: 'expiry@test.com' },
+        },
+      }),
+    });
+
+    await handleAuthTool('verify_credentials', {
+      loginName: 'expiry@test.com',
+      password: 'test_pw',
+    });
+
+    expect(sessionModule.setSessionDirect).toHaveBeenCalled();
+    const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
+    // 验证 accessTokenExpiry 使用实际 expireTime，而非硬编码14天
+    const storedExpiry = new Date(callArg.accessTokenExpiry).getTime();
+    // 允许 ±5 秒误差
+    expect(Math.abs(storedExpiry - futureTime)).toBeLessThan(5000);
+  });
+
+  /**
+   * @note 验证 extra.email 优先被提取为 email
+   * 业务影响：check_login_status 显示正确的用户邮箱
+   */
+  it('webLogin 返回 extra.email 时 session 使用 extra.email 作为 email 字段', async () => {
+    fetchMock.mockResolvedValueOnce({
+      headers: { getSetCookie: () => ['csrfToken=csrf789; Path=/'], get: () => 'text/html' },
+      status: 200,
+      text: async () => '',
+    });
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          cjLoginToken: 'USR@CJbaz@L5@CJ:token_email',
+          id: 77777,
+          extra: { email: 'from_extra@cj.com' },
+          email: 'wrong_email@cj.com', // 应优先使用 extra.email
+        },
+      }),
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'from_extra@cj.com',
+      password: 'pw',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(sessionModule.setSessionDirect).toHaveBeenCalled();
+    const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
+    expect(callArg.email).toBe('from_extra@cj.com');
+  });
+
+  /**
+   * @note 验证 code:803 时返回明确错误，且不触发 wait_for_login 打开新窗口
+   * 业务影响：code:803 是 mcpLogin 未开通的错误，需清晰告知用户原因
+   */
+  it('webLogin 返回 code:803 时返回 isError=true 且包含明确错误信息', async () => {
+    fetchMock.mockResolvedValueOnce({
+      headers: { getSetCookie: () => ['csrfToken=csrfabc; Path=/'], get: () => 'text/html' },
+      status: 200,
+      text: async () => '',
+    });
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 803,
+        success: false,
+        message: 'MCP login not authorized',
+        data: null,
+      }),
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'blocked@cj.com',
+      password: 'pw',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('803');
+    // 不应触发新的登录窗口
+    expect(result.content[0].text).toContain('verify_credentials');
+  });
+
+  /**
+   * @note 纠正(支持多种登录方式-补充): 验证 data.accessToken 作为主 token 字段
+   * 业务影响：实际生产 webLogin 响应返回的是 accessToken（完整 JWT），不是 cjLoginToken
+   * 参考用户实际响应: data.accessToken = "USR@CJ620569@L0@CJ:eyJ..."
+   */
+  it('webLogin 返回 accessToken 字段时优先使用 accessToken 存储到 session', async () => {
+    // Mock csrfToken 请求（正常返回 cookie）
+    fetchMock.mockResolvedValueOnce({
+      headers: { getSetCookie: () => ['csrfToken=csrf_ok; Path=/'], get: () => 'text/html' },
+      status: 200,
+      text: async () => '',
+    });
+    // Mock webLogin 响应：有 accessToken，无 cjLoginToken
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          accessToken: 'USR@CJ620569@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token',
+          token: 'USR@CJ620569@L0@CJ:short_token',
+          // 无 cjLoginToken 字段
+          id: 'a0ab5c31ec2d4ea4981ddd8a0d2f994c',
+          num: 'CJ620569',
+          expireTime: '1780033156457',
+          extra: { email: 'real@example.com' },
+        },
+      }),
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'real@example.com',
+      password: 'any',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('✅');
+    expect(sessionModule.setSessionDirect).toHaveBeenCalled();
+    const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
+    // accessToken 优先级最高，应存储完整 JWT
+    expect(callArg.accessToken).toBe('USR@CJ620569@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token');
+  });
+
+  /**
+   * @note 纠正(支持多种登录方式-补充): 验证 csrfToken 获取失败时登录仍能继续
+   * 业务影响：/userCenterForeignWeb/foreign/webLogin 是 foreign API，无需 csrfToken
+   * 本地 macOS 开发时 GET /login.html 可能无 csrfToken cookie，不应阻塞登录
+   */
+  it('csrfToken GET 失败时登录仍能继续（/foreign/webLogin 不需要 csrfToken）', async () => {
+    // Mock csrfToken 请求：返回 200 但无 Set-Cookie（正常浏览器场景以外无法获取）
+    fetchMock.mockResolvedValueOnce({
+      headers: {
+        getSetCookie: () => [], // 无 csrfToken cookie
+        get: () => 'text/html',
+      },
+      status: 200,
+      text: async () => '',
+    });
+    // Mock webLogin 响应：正常登录成功
+    fetchMock.mockResolvedValueOnce({
+      headers: { get: () => 'application/json' },
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        message: 'success',
+        data: {
+          accessToken: 'USR@CJ999@L0@CJ:no_csrf_jwt_token',
+          id: 'user-uuid-no-csrf',
+          num: 'CJ999999',
+          expireTime: String(Date.now() + 7 * 24 * 3600 * 1000),
+          extra: { email: 'nocsrf@example.com' },
+        },
+      }),
+    });
+
+    const result = await handleAuthTool('verify_credentials', {
+      loginName: 'nocsrf@example.com',
+      password: 'pw',
+    });
+
+    // 关键验证：即使无 csrfToken，登录也应成功，不应抛出"无法获取 csrfToken"错误
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('✅');
+    expect(sessionModule.setSessionDirect).toHaveBeenCalled();
+    const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
+    expect(callArg.accessToken).toBe('USR@CJ999@L0@CJ:no_csrf_jwt_token');
   });
 });

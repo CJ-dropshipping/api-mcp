@@ -336,10 +336,28 @@
               var text = result.content[0].text;
               if (text.indexOf('successful') !== -1 || text.indexOf('成功') !== -1) {
                 msg.className = 'message success';
+                /**
+                 * @note 纠正(支持多种登录方式): 登录成功后显示 CJ 号（从返回文本提取）
+                 * 从 verify_credentials 返回文本中提取 CJ 号信息，方便用户确认账号
+                 */
+                var cjNumMatch = text.match(/CJ\u53f7[^:]*[:：]\s*(\S+)/);
+                if (cjNumMatch) {
+                  msg.textContent = '✅ 登录成功！CJ号: ' + cjNumMatch[1];
+                } else {
+                  msg.textContent = '✅ 登录成功！可关闭此窗口继续使用 Copilot。';
+                }
               } else {
                 msg.className = 'message error';
+                /**
+                 * @note 纠正(支持多种登录方式): code:803 特殊处理，提示 mcpLogin 权限问题
+                 * code:803 是 mcpLogin 未开通的特定错误，给出明确的处理指引
+                 */
+                if (text.indexOf('803') !== -1 || text.indexOf('mcpLogin') !== -1) {
+                  msg.textContent = '⚠️ 账号未开通 MCP 登录权限 (code:803)。请联系 CJ 客服开通 mcpLogin 权限后重试。';
+                } else {
+                  msg.textContent = text;
+                }
               }
-              msg.textContent = text;
             }
             loginBtn.disabled = false;
             loginBtn.textContent = 'Sign In / 登录';
