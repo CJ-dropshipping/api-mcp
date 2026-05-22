@@ -14,3 +14,6 @@ logs/
 
 # VS Code 本地工作区配置（MCP 配置含路径/凭证，不纳入版本管理）
 .vscode/
+
+# GitHub 镜像分支忽略文档目录
+docs/
