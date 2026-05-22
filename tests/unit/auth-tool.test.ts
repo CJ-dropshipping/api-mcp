@@ -379,7 +379,7 @@ describe('verify_credentials - webLogin 响应字段处理', () => {
   /**
    * @note 纠正(支持多种登录方式-补充): 验证 data.accessToken 作为主 token 字段
    * 业务影响：实际生产 webLogin 响应返回的是 accessToken（完整 JWT），不是 cjLoginToken
-   * 参考用户实际响应: data.accessToken = "USR@CJ620569@L0@CJ:eyJ..."
+   * 参考用户实际响应: data.accessToken = "USR@CJ100000@L0@CJ:eyJ..."
    */
   it('webLogin 返回 accessToken 字段时优先使用 accessToken 存储到 session', async () => {
     // Mock csrfToken 请求（正常返回 cookie）
@@ -397,11 +397,11 @@ describe('verify_credentials - webLogin 响应字段处理', () => {
         success: true,
         message: 'success',
         data: {
-          accessToken: 'USR@CJ620569@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token',
-          token: 'USR@CJ620569@L0@CJ:short_token',
+          accessToken: 'USR@CJ100000@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token',
+          token: 'USR@CJ100000@L0@CJ:short_token',
           // 无 cjLoginToken 字段
           id: 'a0ab5c31ec2d4ea4981ddd8a0d2f994c',
-          num: 'CJ620569',
+          num: 'CJ100000',
           expireTime: '1780033156457',
           extra: { email: 'real@example.com' },
         },
@@ -418,7 +418,7 @@ describe('verify_credentials - webLogin 响应字段处理', () => {
     expect(sessionModule.setSessionDirect).toHaveBeenCalled();
     const callArg = sessionModule.setSessionDirect.mock.calls[0][0];
     // accessToken 优先级最高，应存储完整 JWT
-    expect(callArg.accessToken).toBe('USR@CJ620569@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token');
+    expect(callArg.accessToken).toBe('USR@CJ100000@L0@CJ:eyJhbGciOiJIUzI1NiJ9.real_jwt_token');
   });
 
   /**
