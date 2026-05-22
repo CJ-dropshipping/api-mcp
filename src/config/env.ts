@@ -24,7 +24,12 @@ export interface EnvConfig {
 }
 
 export function getEnvConfig(): EnvConfig {
-  const env = (process.env.CJ_ENV || 'test') as 'test' | 'production';
+  /**
+   * @note 纠正(开源准备): 默认环境改为 production，以便外部开发者无需额外配置即可使用。
+   * 内部开发者如需使用测试环境请显式设置 CJ_ENV=test。
+   * 原因：test 环境域名 *.offline.pre.com 为 CJ 内网地址，外部无法访问。
+   */
+  const env = (process.env.CJ_ENV || 'production') as 'test' | 'production';
   const isProduction = env === 'production';
 
   return {

@@ -336,46 +336,45 @@ export async function handleAuthTool(
 }
 
 /**
- * @description 从 login 页面获取 csrfToken cookie
+ * @description 从 login 页面尝试获取 csrfToken cookie（最佳努力，非强制）
  * @note 纠正: 登录 API 需要 egg.js csrfToken 防 CSRF，需先 GET 页面获取
  * 参考用户验证 curl: cookie 中含 csrfToken=xxx
  * @note 纠正(40次): 原使用 redirect: 'manual'，导致生产环境 HTTPS 跳转时
  * Set-Cookie 头丢失（opaque redirect 响应无法读取 headers），csrfToken 始终为空。
  * 改为 redirect: 'follow' 跟随跳转，从最终页面响应中提取 csrfToken。
- * 若最终仍无 csrfToken，说明 loginApiBase 不可达，提前抛出明确错误。
+ * @note 纠正(补充登录方式): /userCenterForeignWeb/foreign/webLogin 是 foreign API，
+ * 不受 egg.js CSRF 中间件保护，csrfToken 是可选的。
+ * 若无法获取（本地 macOS 开发时域名可能不返回 cookie），直接返回空 cookies 继续登录。
+ * 不再 throw，避免「无法获取 csrfToken」阻塞 VS Code Copilot UI 登录流程。
  */
 async function fetchCsrfToken(loginApiBase: string): Promise<{ csrfToken: string; cookies: string }> {
-  const resp = await fetch(`${loginApiBase}/login.html`, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    redirect: 'follow',
-  });
+  try {
+    const resp = await fetch(`${loginApiBase}/login.html`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      redirect: 'follow',
+    });
 
-  const setCookies = resp.headers.getSetCookie?.() || [];
-  const allCookies: string[] = [];
-  let csrfToken = '';
+    const setCookies = resp.headers.getSetCookie?.() || [];
+    const allCookies: string[] = [];
+    let csrfToken = '';
 
-  for (const sc of setCookies) {
-    const nameVal = sc.split(';')[0];
-    allCookies.push(nameVal);
-    if (nameVal.startsWith('csrfToken=')) {
-      csrfToken = nameVal.split('=')[1];
+    for (const sc of setCookies) {
+      const nameVal = sc.split(';')[0];
+      allCookies.push(nameVal);
+      if (nameVal.startsWith('csrfToken=')) {
+        csrfToken = nameVal.split('=')[1];
+      }
     }
-  }
 
-  if (!csrfToken) {
-    // 生产域名正常情况下必然返回 csrfToken；若为空说明域名不可达或配置错误
-    throw new Error(
-      `无法获取 csrfToken (HTTP ${resp.status})。\n` +
-      `loginApiBase: ${loginApiBase}\n` +
-      `可能原因: 1) 内网域名在当前环境不可达，请使用 CJ_ENV=production；` +
-      `2) 服务器无响应`
-    );
+    // /foreign/webLogin 不需要 csrfToken，获取到则携带，获取不到也继续
+    return { csrfToken, cookies: allCookies.join('; ') };
+  } catch {
+    // 网络不可达（如内网域名在本地开发环境）：跳过 csrfToken，继续登录
+    return { csrfToken: '', cookies: '' };
   }
-
-  return { csrfToken, cookies: allCookies.join('; ') };
 }
 
 async function handleVerifyCredentials(
@@ -509,14 +508,42 @@ async function handleVerifyCredentials(
       );
     }
 
+    /**
+     * @note 纠正(支持多种登录方式): 补充完整的 webLogin 响应类型定义
+     * 参考 26年05月15日 10:56:55 第23次提交 curl 和实际返回字段:
+     * - accessToken: 完整 JWT (USR@CJxxx@L0@CJ:eyJ...)，供后续接口使用的主 token
+     * - id: 用户 UUID 字符串（如 "a0ab5c31ec2d4ea4981ddd8a0d2f994c"）
+     * - num: CJ 号字符串（如 "CJ620569"）
+     * - expireTime: token 过期时间（毫秒时间戳，可为数字或字符串）
+     * - extra.email: 实际登录邮箱（优先级高于顶层 email 字段）
+     * @note 纠正(补充登录方式): accessToken 是实际生产接口返回的主 token 字段
+     * token/cjLoginToken 是兼容字段，优先级低于 accessToken
+     */
     const loginData = await loginResponse.json() as {
       code: number;
       success: boolean;
       message: string;
       data?: {
-        apiKey?: string;
+        /** 完整 JWT token，供后续 OpenAPI 接口使用（优先级最高） */
+        accessToken?: string;
+        /** CJ 前端 token（兼容字段，优先级低于 accessToken） */
         token?: string;
+        /** MCP 登录 token（兼容字段） */
         cjLoginToken?: string;
+        apiKey?: string;
+        /** 用户 UUID 字符串（如 "a0ab5c31ec2d4ea4981ddd8a0d2f994c"） */
+        id?: string | number;
+        /** CJ 号（如 "CJ620569"，字符串格式） */
+        num?: string | number;
+        /** token 过期时间（毫秒时间戳，可为字符串或数字） */
+        expireTime?: string | number;
+        /** 用户账号信息（嵌套对象，extra.email 为真实邮箱） */
+        extra?: {
+          email?: string;
+          nickName?: string;
+          headImg?: string;
+          [key: string]: unknown;
+        };
         userId?: string;
         email?: string;
         nickName?: string;
@@ -532,10 +559,15 @@ async function handleVerifyCredentials(
        * 否则 _meta.ui.resourceUri 会触发第二个登录弹窗。
        * 应直接让用户在已打开的登录窗口中重试，或再次调用 verify_credentials 提供正确密码。
        */
+      /**
+       * @note 纠正(支持多种登录方式): 补充 code:803（mcpLogin 未开通）错误码映射
+       * code:803 表示该账号未开通 mcpLogin 权限，需联系 CJ 客服开通
+       */
       const errorMessages: Record<number, string> = {
         300006: '账号或密码错误 / Incorrect account or password',
         300003: '该邮箱未注册 / This email has not been registered',
         300001: '账号已被锁定 / Account has been locked',
+        803: 'mcpLogin 权限未开通，请联系 CJ 客服开通 MCP 登录权限 / mcpLogin not authorized, please contact CJ support to enable MCP login',
       };
       const friendlyMsg = errorMessages[loginData.code] || loginData.message;
       return {
@@ -561,11 +593,31 @@ async function handleVerifyCredentials(
      *           data.extra.email, data.num, data.id
      */
     const apiKey = loginData.data?.apiKey;
-    const loginToken = loginData.data?.cjLoginToken || loginData.data?.token;
-    const userEmail = (loginData.data as Record<string, unknown>)?.extra
-      ? ((loginData.data as Record<string, unknown>).extra as Record<string, unknown>)?.email as string
-      : loginData.data?.email;
+    /**
+     * @note 纠正(补充登录方式): accessToken 是实际生产 webLogin 响应的主 token 字段
+     * 优先使用 accessToken（完整 JWT），兼容旧字段 cjLoginToken/token
+     * 参考用户实际响应: data.accessToken = "USR@CJ620569@L0@CJ:eyJ..."
+     */
+    const loginToken = loginData.data?.accessToken || loginData.data?.cjLoginToken || loginData.data?.token;
+    /**
+     * @note 纠正(支持多种登录方式): 优先从 data.extra.email 提取真实邮箱（类型安全）
+     * 原代码使用 Record<string, unknown> 强转，类型不安全且可读性差
+     */
+    const userEmail = loginData.data?.extra?.email || loginData.data?.email;
     const displayEmail = userEmail || effectiveLoginName;
+    /**
+     * @note 纠正(支持多种登录方式): 使用实际 expireTime（毫秒时间戳），fallback 为 7 天
+     * 原代码硬编码 14 天，导致 isAccessTokenExpired() 无法正确判断 token 实际有效期
+     * @note 纠正(补充登录方式): expireTime 在实际响应中是字符串（如 "1780033156457"）
+     * 必须用 Number() 转换再传给 new Date()，否则 new Date("1780033156457") 返回 Invalid Date
+     */
+    const tokenExpiry = loginData.data?.expireTime
+      ? new Date(Number(loginData.data.expireTime)).toISOString()
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    /**
+     * @note 纠正(支持多种登录方式): 使用完整类型后直接访问 data.id，不再需要 type casting
+     */
+    const openId = String(loginData.data?.id || '');
 
     if (!apiKey) {
       /**
@@ -577,10 +629,10 @@ async function handleVerifyCredentials(
         const session = setSessionDirect({
           email: displayEmail,
           accessToken: loginToken,
-          accessTokenExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), // 14天默认有效期
+          accessTokenExpiry: tokenExpiry,
           refreshToken: '',
           refreshTokenExpiry: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
-          openId: String((loginData.data as Record<string, unknown>)?.id || ''),
+          openId,
           loginToken,
         });
         return {
@@ -588,7 +640,7 @@ async function handleVerifyCredentials(
             type: 'text',
             text: `✅ 登录成功 / Login successful!\n` +
               `用户 / User: ${displayEmail}\n` +
-              `CJ号 / CJ Number: ${(loginData.data as Record<string, unknown>)?.num || 'N/A'}\n` +
+              `CJ号 / CJ Number: ${loginData.data?.num || 'N/A'}\n` +
               `Token 已保存，可用于后续 OpenAPI 接口调用。\n` +
               `Token saved, ready for OpenAPI calls.`,
           }],
