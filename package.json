@@ -19,7 +19,6 @@
     "start:http": "CJ_TRANSPORT=http CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
     "start:https": "CJ_TRANSPORT=https CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
     "start:production": "CJ_TRANSPORT=http CJ_ENV=production CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
-    "start:ngrok": "CJ_TRANSPORT=http CJ_ENV=production CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs & sleep 1 && ngrok http 3009",
     "debug:http": "bash script/debug-http.sh",
     "debug:http:log": "CJ_LOG_FILE=true CJ_ENV=test CJ_LOG_LEVEL=debug bash script/debug-http.sh"
   },
