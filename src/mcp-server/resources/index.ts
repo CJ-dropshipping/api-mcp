@@ -13,15 +13,61 @@ import { getProductUrl } from '../../utils/product-href.js';
 /** Cursor / MCP Apps 规范要求的 HTML UI 资源 MIME 类型（纯 text/html 会报 Unsupported UI resource type） */
 export const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
 
+/**
+ * MCP Apps 沙箱 CSP：未声明时 Host 默认 img-src 仅 'self' data:，远程 CDN 图片会被拦截。
+ * ChatGPT 可能合并额外白名单；Cursor / Codex 严格按 _meta.ui.csp 执行。
+ * @see https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/draft/apps.mdx
+ */
+export const CJ_MCP_UI_CSP = {
+  resourceDomains: [
+    'https://cf.cjdropshipping.com',
+    'https://frontend.cjdropshipping.com',
+    'https://www.cjdropshipping.com',
+    'https://cjdropshipping.com',
+    'https://*.cjdropshipping.com',
+    // 测试环境静态资源 / login API
+    'http://www.cjdropshipping.offline.pre.com',
+    'http://*.cjdropshipping.offline.pre.com',
+  ],
+  connectDomains: [
+    'https://www.cjdropshipping.com',
+    'https://developers.cjdropshipping.com',
+    'https://*.cjdropshipping.com',
+    'http://www.cjdropshipping.offline.pre.com',
+    'http://developers.cjdropshipping.offline.pre.com',
+    'http://*.cjdropshipping.offline.pre.com',
+  ],
+} as const;
+
+const CJ_MCP_UI_META = { ui: { csp: CJ_MCP_UI_CSP } } as const;
+
 interface Resource {
   uri: string;
   name: string;
   description: string;
   mimeType: string;
+  _meta?: typeof CJ_MCP_UI_META;
+}
+
+interface McpAppResourceContent {
+  uri: string;
+  mimeType: string;
+  text: string;
+  _meta: typeof CJ_MCP_UI_META;
 }
 
 interface ResourceContent {
-  contents: Array<{ uri: string; mimeType: string; text: string }>;
+  contents: McpAppResourceContent[];
+}
+
+/** 构造带 CSP 声明的 MCP App HTML 资源内容 */
+function buildMcpAppHtmlContent(uri: string, htmlContent: string): McpAppResourceContent {
+  return {
+    uri,
+    mimeType: MCP_APP_HTML_MIME,
+    text: htmlContent,
+    _meta: CJ_MCP_UI_META,
+  };
 }
 
 /** 模块级缓存：存储最近一次 search_products / get_product_detail 的数据，用于注入 UI 初始数据 */
@@ -56,30 +102,35 @@ const resources: Resource[] = [
     name: 'CJ Login Form',
     description: 'Interactive login form for CJ Dropshipping / CJ登录页面',
     mimeType: MCP_APP_HTML_MIME,
+    _meta: CJ_MCP_UI_META,
   },
   {
     uri: 'ui://cj-mcp/product-list',
     name: 'CJ Product List',
     description: 'Interactive product list viewer. Use this to display search_products results in a visual card layout. / 商品列表展示页面，用于以卡片方式可视化展示商品搜索结果。',
     mimeType: MCP_APP_HTML_MIME,
+    _meta: CJ_MCP_UI_META,
   },
   {
     uri: 'ui://cj-mcp/product-detail',
     name: 'CJ Product Detail',
     description: 'Interactive product detail viewer. Use this to display get_product_detail results with images, variants, and pricing. / 商品详情展示页面，用于展示商品图片、规格和价格信息。',
     mimeType: MCP_APP_HTML_MIME,
+    _meta: CJ_MCP_UI_META,
   },
   {
     uri: 'ui://cj-mcp/order-list',
     name: 'CJ Order List',
     description: 'Visual order list viewer. Displays order status, amounts, logistics and shipping info. / 订单列表展示页面，以卡片方式展示订单状态、金额、物流等信息。',
     mimeType: MCP_APP_HTML_MIME,
+    _meta: CJ_MCP_UI_META,
   },
   {
     uri: 'ui://cj-mcp/order-detail',
     name: 'CJ Order Detail',
     description: 'Visual order detail viewer. Displays full order info: status, address, product list, logistics, amounts. / 订单详情展示页面，展示订单状态、收货地址、商品清单、物流信息等完整详情。',
     mimeType: MCP_APP_HTML_MIME,
+    _meta: CJ_MCP_UI_META,
   },
 ];
 
@@ -100,9 +151,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
    */
   if (uri.startsWith('ui://cj-mcp/login')) {
     const htmlContent = readUiHtmlFile('login.html');
-    return {
-      contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }],
-    };
+    return { contents: [buildMcpAppHtmlContent(uri, htmlContent)] };
   }
 
   if (uri.startsWith('ui://cj-mcp/product-list')) {
@@ -116,7 +165,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
       htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
+    return { contents: [buildMcpAppHtmlContent(uri, htmlContent)] };
   }
 
   if (uri.startsWith('ui://cj-mcp/product-detail')) {
@@ -126,7 +175,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
       htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
+    return { contents: [buildMcpAppHtmlContent(uri, htmlContent)] };
   }
 
   if (uri.startsWith('ui://cj-mcp/order-detail')) {
@@ -136,7 +185,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderDetailData)};</script>`;
       htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
+    return { contents: [buildMcpAppHtmlContent(uri, htmlContent)] };
   }
 
   if (uri.startsWith('ui://cj-mcp/order-list')) {
@@ -150,7 +199,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderListData)};</script>`;
       htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
+    return { contents: [buildMcpAppHtmlContent(uri, htmlContent)] };
   }
 
   throw new Error(`Unknown resource: ${uri}`);
