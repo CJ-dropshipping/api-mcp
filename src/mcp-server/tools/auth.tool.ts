@@ -182,10 +182,21 @@ export function getAuthTools(): Tool[] {
   });
 }
 
+type AuthToolResult = {
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+};
+
+function buildLoginUiMeta(): Record<string, unknown> {
+  const uniqueUri = `ui://cj-mcp/login?t=${Date.now()}_${++loginUriSeq}`;
+  return { ui: { resourceUri: uniqueUri } };
+}
+
 export async function handleAuthTool(
   name: string,
   args: Record<string, unknown>
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<AuthToolResult> {
   switch (name) {
     case 'show_login_form':
       /**
@@ -271,7 +282,45 @@ export async function handleAuthTool(
        * @note 纠正(46次): 添加 in-progress 防重入。
        * 若 AI 并发调用 wait_for_login（例如重试或并发请求），多个调用会同时打开多个登录窗口。
        * 通过 waitForLoginInProgress 标志位限制同时只有一个轮询在运行。
+       *
+       * @note 纠正(Cursor MCP Apps): VS Code Copilot 从 tools/list 的 _meta.ui 渲染登录 UI；
+       * Cursor 需要从 tools/call 返回结果的 _meta.ui 才能渲染 UI。
+       * CJ_UI_IMMEDIATE=true 时立即返回 _meta，不阻塞轮询，避免 Cursor 等待超时后才显示界面。
        */
+      const loginUiMeta = buildLoginUiMeta();
+
+      if (isSessionValid()) {
+        const session = getSession();
+        const user = session?.loginName || session?.email || '已登录';
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `✅ 已登录，无需重复登录 / Already logged in`,
+              `用户 / User: ${user}`,
+            ].join('\n'),
+          }],
+          _meta: loginUiMeta,
+        };
+      }
+
+      const immediateUi = process.env.CJ_UI_IMMEDIATE === 'true' || (args as { wait?: boolean }).wait === false;
+      if (immediateUi) {
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              '🔐 请在下方登录界面输入 CJ 账号密码完成登录。',
+              '登录完成后告诉我，我会调用 check_login_status 确认并继续。',
+              '',
+              'Please log in using the form below.',
+              'After login, let me know and I will call check_login_status to confirm.',
+            ].join('\n'),
+          }],
+          _meta: loginUiMeta,
+        };
+      }
+
       if (waitForLoginInProgress) {
         return {
           content: [{
@@ -281,6 +330,7 @@ export async function handleAuthTool(
               'Login wait is already in progress. Please complete login in the existing window, then let me know.',
             ].join('\n'),
           }],
+          _meta: loginUiMeta,
         };
       }
 
@@ -303,6 +353,7 @@ export async function handleAuthTool(
                   `用户 / User: ${user}`,
                 ].join('\n'),
               }],
+              _meta: loginUiMeta,
             };
           }
           await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
@@ -324,6 +375,7 @@ export async function handleAuthTool(
             ].join('\n'),
           }],
           isError: false,
+          _meta: loginUiMeta,
         };
       } finally {
         waitForLoginInProgress = false;

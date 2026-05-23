@@ -12,6 +12,9 @@ import { getAccessToken } from '../../auth/session.js';
 import { getEnvConfig } from '../../config/env.js';
 import { getProductUrl } from '../../utils/product-href.js';
 
+/** Cursor / MCP Apps 规范要求的 HTML UI 资源 MIME 类型（纯 text/html 会报 Unsupported UI resource type） */
+export const MCP_APP_HTML_MIME = 'text/html;profile=mcp-app';
+
 interface Resource {
   uri: string;
   name: string;
@@ -54,31 +57,31 @@ const resources: Resource[] = [
     uri: 'ui://cj-mcp/login',
     name: 'CJ Login Form',
     description: 'Interactive login form for CJ Dropshipping / CJ登录页面',
-    mimeType: 'text/html',
+    mimeType: MCP_APP_HTML_MIME,
   },
   {
     uri: 'ui://cj-mcp/product-list',
     name: 'CJ Product List',
     description: 'Interactive product list viewer. Use this to display search_products results in a visual card layout. / 商品列表展示页面，用于以卡片方式可视化展示商品搜索结果。',
-    mimeType: 'text/html',
+    mimeType: MCP_APP_HTML_MIME,
   },
   {
     uri: 'ui://cj-mcp/product-detail',
     name: 'CJ Product Detail',
     description: 'Interactive product detail viewer. Use this to display get_product_detail results with images, variants, and pricing. / 商品详情展示页面，用于展示商品图片、规格和价格信息。',
-    mimeType: 'text/html',
+    mimeType: MCP_APP_HTML_MIME,
   },
   {
     uri: 'ui://cj-mcp/order-list',
     name: 'CJ Order List',
     description: 'Visual order list viewer. Displays order status, amounts, logistics and shipping info. / 订单列表展示页面，以卡片方式展示订单状态、金额、物流等信息。',
-    mimeType: 'text/html',
+    mimeType: MCP_APP_HTML_MIME,
   },
   {
     uri: 'ui://cj-mcp/order-detail',
     name: 'CJ Order Detail',
     description: 'Visual order detail viewer. Displays full order info: status, address, product list, logistics, amounts. / 订单详情展示页面，展示订单状态、收货地址、商品清单、物流信息等完整详情。',
-    mimeType: 'text/html',
+    mimeType: MCP_APP_HTML_MIME,
   },
 ];
 
@@ -107,7 +110,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       try {
         const htmlContent = readFileSync(htmlPath, 'utf-8');
         return {
-          contents: [{ uri, mimeType: 'text/html', text: htmlContent }],
+          contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }],
         };
       } catch {
         continue;
@@ -134,7 +137,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
         }
-        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
       } catch { continue; }
     }
     throw new Error('product-list.html not found. Ensure src/ui/product-list.html exists.');
@@ -153,7 +156,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
         }
-        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
       } catch { continue; }
     }
     throw new Error('product-detail.html not found. Ensure src/ui/product-detail.html exists.');
@@ -172,7 +175,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderDetailData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
         }
-        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
       } catch { continue; }
     }
     throw new Error('order-detail.html not found. Ensure src/ui/order-detail.html exists.');
@@ -195,7 +198,7 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
           const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderListData)};</script>`;
           htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
         }
-        return { contents: [{ uri, mimeType: 'text/html', text: htmlContent }] };
+        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
       } catch { continue; }
     }
     throw new Error('order-list.html not found. Ensure src/ui/order-list.html exists.');
