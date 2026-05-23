@@ -12,6 +12,7 @@
  */
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { getLogsDir } from './module-path.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -100,8 +101,7 @@ function writeToFile(line: string): void {
   if (!LOG_TO_FILE) return;
   try {
     if (!logDir) {
-      // __dirname 在打包后为 dist/mcp-server/，../../ 指向项目根 CJMCPAPP/
-      logDir = join(__dirname, '../../logs');
+      logDir = getLogsDir();
       mkdirSync(logDir, { recursive: true });
     }
     const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD

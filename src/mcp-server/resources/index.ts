@@ -1,10 +1,8 @@
 /**
  * @fileoverview Resources 注册中心
  * 管理 MCP UI Resources (如登录页面)
- * @note CJS 兼容: 使用 __dirname 替代 import.meta.url，esbuild bundle 为 CJS 时 import.meta 为空
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readUiHtmlFile } from '../../utils/module-path.js';
 import { logger } from '../../utils/logger.js';
 import { httpClient, isApiSuccess } from '../../api-client/http-client.js';
 import { ENDPOINTS, API_VERSION_PREFIX } from '../../api-client/endpoints.js';
@@ -101,23 +99,10 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
    * 服务端读取时，只需识别基础路径 'ui://cj-mcp/login' 前缀即可，查询参数仅用于客户端唯一性标识。
    */
   if (uri.startsWith('ui://cj-mcp/login')) {
-    const possiblePaths = [
-      join(process.cwd(), 'src', 'ui', 'login.html'),
-      join(__dirname, '..', '..', 'ui', 'login.html'),
-    ];
-
-    for (const htmlPath of possiblePaths) {
-      try {
-        const htmlContent = readFileSync(htmlPath, 'utf-8');
-        return {
-          contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }],
-        };
-      } catch {
-        continue;
-      }
-    }
-
-    throw new Error('Login HTML not found. Ensure src/ui/login.html exists.');
+    const htmlContent = readUiHtmlFile('login.html');
+    return {
+      contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }],
+    };
   }
 
   if (uri.startsWith('ui://cj-mcp/product-list')) {
@@ -126,59 +111,32 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       await fetchProductListFallback();
     }
     logger.debug(`[RESOURCE] product-list requested, cache=${cachedProductListData != null ? 'HIT' : 'MISS'}`);
-    const possiblePaths = [
-      join(process.cwd(), 'src', 'ui', 'product-list.html'),
-      join(__dirname, '..', '..', 'ui', 'product-list.html'),
-    ];
-    for (const htmlPath of possiblePaths) {
-      try {
-        let htmlContent = readFileSync(htmlPath, 'utf-8');
-        if (cachedProductListData) {
-          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
-          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
-        }
-        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
-      } catch { continue; }
+    let htmlContent = readUiHtmlFile('product-list.html');
+    if (cachedProductListData) {
+      const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductListData)};</script>`;
+      htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    throw new Error('product-list.html not found. Ensure src/ui/product-list.html exists.');
+    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
   }
 
   if (uri.startsWith('ui://cj-mcp/product-detail')) {
     logger.debug(`[RESOURCE] product-detail requested, cache=${cachedProductDetailData != null ? 'HIT' : 'MISS'}`);
-    const possiblePaths = [
-      join(process.cwd(), 'src', 'ui', 'product-detail.html'),
-      join(__dirname, '..', '..', 'ui', 'product-detail.html'),
-    ];
-    for (const htmlPath of possiblePaths) {
-      try {
-        let htmlContent = readFileSync(htmlPath, 'utf-8');
-        if (cachedProductDetailData) {
-          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
-          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
-        }
-        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
-      } catch { continue; }
+    let htmlContent = readUiHtmlFile('product-detail.html');
+    if (cachedProductDetailData) {
+      const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedProductDetailData)};</script>`;
+      htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    throw new Error('product-detail.html not found. Ensure src/ui/product-detail.html exists.');
+    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
   }
 
   if (uri.startsWith('ui://cj-mcp/order-detail')) {
     logger.debug(`[RESOURCE] order-detail requested, cache=${cachedOrderDetailData != null ? 'HIT' : 'MISS'}`);
-    const possiblePaths = [
-      join(process.cwd(), 'src', 'ui', 'order-detail.html'),
-      join(__dirname, '..', '..', 'ui', 'order-detail.html'),
-    ];
-    for (const htmlPath of possiblePaths) {
-      try {
-        let htmlContent = readFileSync(htmlPath, 'utf-8');
-        if (cachedOrderDetailData) {
-          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderDetailData)};</script>`;
-          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
-        }
-        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
-      } catch { continue; }
+    let htmlContent = readUiHtmlFile('order-detail.html');
+    if (cachedOrderDetailData) {
+      const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderDetailData)};</script>`;
+      htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    throw new Error('order-detail.html not found. Ensure src/ui/order-detail.html exists.');
+    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
   }
 
   if (uri.startsWith('ui://cj-mcp/order-list')) {
@@ -187,21 +145,12 @@ export async function handleResourceRead(uri: string): Promise<ResourceContent> 
       await fetchOrderListFallback();
     }
     logger.debug(`[RESOURCE] order-list requested, cache=${cachedOrderListData != null ? 'HIT' : 'MISS'}`);
-    const possiblePaths = [
-      join(process.cwd(), 'src', 'ui', 'order-list.html'),
-      join(__dirname, '..', '..', 'ui', 'order-list.html'),
-    ];
-    for (const htmlPath of possiblePaths) {
-      try {
-        let htmlContent = readFileSync(htmlPath, 'utf-8');
-        if (cachedOrderListData) {
-          const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderListData)};</script>`;
-          htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
-        }
-        return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
-      } catch { continue; }
+    let htmlContent = readUiHtmlFile('order-list.html');
+    if (cachedOrderListData) {
+      const initScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(cachedOrderListData)};</script>`;
+      htmlContent = htmlContent.replace('</head>', `${initScript}\n</head>`);
     }
-    throw new Error('order-list.html not found. Ensure src/ui/order-list.html exists.');
+    return { contents: [{ uri, mimeType: MCP_APP_HTML_MIME, text: htmlContent }] };
   }
 
   throw new Error(`Unknown resource: ${uri}`);
