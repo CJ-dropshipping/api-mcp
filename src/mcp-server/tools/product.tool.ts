@@ -450,17 +450,23 @@ export const productTools: Tool[] = [
   },
 ];
 
+/**
+ * MCP Apps UI 资源 URI 前缀（带查询参数的完整 URI）。
+ * 用于所有工具的 _meta.ui.resourceUri，确保 Claude Desktop 识别每个工具都关联了 UI。
+ * 实际 UI 渲染路径由 handleProductTool 中的 uiUri 参数控制。
+ */
+const PRODUCT_LIST_UI_URI = 'ui://cj-mcp/product-list';
+const PRODUCT_DETAIL_UI_URI = 'ui://cj-mcp/product-detail';
+
 /** module-level: 记录最近一次数据更新序列号，用于动态生成唯一 resourceUri */
 let lastProductDetailPid = '';
 let productUriSeq = 0;
 
 /**
  * 动态工具列表：
- * - search_products 注入 _meta.ui.resourceUri: ui://cj-mcp/product-list?t=...（每次都唯一）
- * - get_product_detail 注入 _meta.ui.resourceUri: ui://cj-mcp/product-detail?pid=...&t=...
- * - show_product_list / show_product_detail 同样动态注入唯一 URI
- * 这样工具被调用时，MCP 客户端会直接显示 UI，并通过 resources 注入初始数据。
- * - 所有只读工具注入 annotations.readOnlyHint=true，避免 ChatGPT 每次调用都弹确认框。
+ * - 所有工具（含 search_products / get_product_detail / show_product_list / show_product_detail）
+ *   都注入 _meta.ui.resourceUri，确保 Claude Desktop 识别为 MCP Apps UI 工具
+ * - readOnlyHint 仅注入只读工具（避免 ChatGPT 每次调用都弹确认框）
  */
 const READ_ONLY_PRODUCT_TOOLS = new Set([
   'search_products', 'get_category_tree', 'get_warehouses', 'get_product_detail',
@@ -473,12 +479,13 @@ export function getProductTools(): Tool[] {
   const seq = ++productUriSeq;
   const ts = Date.now();
   return productTools.map(tool => {
-    const annotations = READ_ONLY_PRODUCT_TOOLS.has(tool.name) ? { readOnlyHint: true } : undefined;
+    const isReadOnly = READ_ONLY_PRODUCT_TOOLS.has(tool.name);
+    const annotations = isReadOnly ? { readOnlyHint: true } : undefined;
     if (tool.name === 'show_product_list') {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: `ui://cj-mcp/product-list?t=${ts}_${seq}` } },
+        _meta: { ui: { resourceUri: `${PRODUCT_LIST_UI_URI}?t=${ts}_${seq}` } },
       };
     }
     if (tool.name === 'show_product_detail') {
@@ -486,10 +493,15 @@ export function getProductTools(): Tool[] {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: `ui://cj-mcp/product-detail${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
+        _meta: { ui: { resourceUri: `${PRODUCT_DETAIL_UI_URI}${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
       };
     }
-    return annotations ? { ...tool, annotations } : tool;
+    // 所有工具都注入 _meta.ui，告知 Claude Desktop 此工具有可渲染的 MCP Apps UI
+    return {
+      ...tool,
+      annotations,
+      _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } },
+    };
   });
 }
 

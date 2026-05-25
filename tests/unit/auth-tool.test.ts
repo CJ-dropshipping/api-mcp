@@ -106,7 +106,17 @@ describe('auth.tool', () => {
 
     const result = await handleAuthTool('wait_for_login', { timeout: 10 });
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain('登录成功');
+    expect(result.content[0].text).toContain('已登录');
+    expect(result._meta?.ui).toBeDefined();
+  });
+
+  it('wait_for_login 在 CJ_UI_IMMEDIATE=true 时立即返回登录 UI meta', async () => {
+    vi.stubEnv('CJ_UI_IMMEDIATE', 'true');
+    const result = await handleAuthTool('wait_for_login', {});
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('登录界面');
+    expect((result._meta as { ui?: { resourceUri?: string } })?.ui?.resourceUri).toMatch(/^ui:\/\/cj-mcp\/login\?t=/);
+    vi.unstubAllEnvs();
   });
 
   /**

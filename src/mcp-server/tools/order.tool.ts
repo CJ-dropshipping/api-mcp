@@ -401,6 +401,13 @@ export const orderTools: Tool[] = [
 
 let orderListUriSeq = 0;
 
+/**
+ * MCP Apps UI 资源 URI 前缀（带查询参数的完整 URI）。
+ * 用于所有工具的 _meta.ui.resourceUri，确保 Claude Desktop 识别每个工具都关联了 UI。
+ */
+const ORDER_LIST_UI_URI = 'ui://cj-mcp/order-list';
+const ORDER_DETAIL_UI_URI = 'ui://cj-mcp/order-detail';
+
 const READ_ONLY_ORDER_TOOLS = new Set([
   'get_order_list', 'get_pay_order_list', 'get_order_detail',
   'get_account_balance', 'get_merge_progress', 'query_cogs',
@@ -413,12 +420,17 @@ export function getOrderTools(): Tool[] {
   return orderTools.map(tool => {
     const annotations = READ_ONLY_ORDER_TOOLS.has(tool.name) ? { readOnlyHint: true } : undefined;
     if (tool.name === 'show_order_list') {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: `ui://cj-mcp/order-list?t=${ts}_${seq}` } } };
+      return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_LIST_UI_URI}?t=${ts}_${seq}` } } };
     }
     if (tool.name === 'show_order_detail') {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: `ui://cj-mcp/order-detail?t=${ts}_${seq}` } } };
+      return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_DETAIL_UI_URI}?t=${ts}_${seq}` } } };
     }
-    return annotations ? { ...tool, annotations } : tool;
+    // 所有工具都注入 _meta.ui，告知 Claude Desktop 此工具有可渲染的 MCP Apps UI
+    return {
+      ...tool,
+      annotations,
+      _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } },
+    };
   });
 }
 
