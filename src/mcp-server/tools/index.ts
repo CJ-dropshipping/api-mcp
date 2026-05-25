@@ -25,6 +25,7 @@ import { AuthExpiredError } from '../../api-client/http-client.js';
 interface ToolCallResult {
   content: Array<{ type: string; text: string }>;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
 }
 
 type ToolHandler = (name: string, args: Record<string, unknown>) => Promise<ToolCallResult>;
