@@ -174,13 +174,21 @@ export const orderTools: Tool[] = [
     name: 'get_order_list',
     description:
       '✅【订单列表查询入口】用户说「查订单」「查全部订单」「历史订单」「看看我的订单」→ 使用此工具！\n' +
-      '⚠️【展示规则】调用此工具后，必须立即调用 show_order_list 以卡片 UI 界面展示结果，不要纯文字展示订单列表。\n' +
+      '【两步展示流程 - 必须按顺序执行】\n' +
+      '  第1步：先调用本工具 get_order_list 获取最新数据\n' +
+      '  第2步：再调用 show_order_list 打开可视化卡片界面（数据已缓存）\n' +
+      '⚠️ 本工具仅获取数据，不渲染 UI；UI 渲染由 show_order_list 独立完成。\n' +
+      '⚠️ 不要尝试在本工具的返回结果中注入 _meta.ui，那样会导致 UI 在数据到达前就渲染（旧数据）。\n' +
       '【参数映射规则】\n' +
       '- 「查订单」「查所有订单」→ 无需参数\n' +
       '- 「最近一笔订单」→ sortByLatest=true\n' +
       '- 「已发货的订单」→ status="SHIPPED"\n' +
       '- 「已取消的」→ status="CANCELLED"\n' +
-      'Query order list. ⚠️【Display rule】MUST call show_order_list immediately after to show results in MCP Apps UI.\n' +
+      'Query order list.\n' +
+      '【Two-step display - MUST call in order】\n' +
+      '  Step1: Call this tool (get_order_list) to fetch data\n' +
+      '  Step2: Call show_order_list to render the visual card UI (data already cached)\n' +
+      '⚠️ This tool fetches data ONLY; UI rendering is done by show_order_list separately.\n' +
       '[Intent mapping] "show orders" / "my orders" / "order history" / "recent orders" → this tool.',
     inputSchema: {
       type: 'object' as const,
@@ -231,15 +239,22 @@ export const orderTools: Tool[] = [
     name: 'get_order_detail',
     description:
       '查询CJ单个订单的完整详情，包括订单状态、收货地址、商品清单、物流信息、金额明细等。\n' +
+      '【两步展示流程 - 必须按顺序执行】\n' +
+      '  第1步：先调用本工具 get_order_detail(orderId) 获取最新数据\n' +
+      '  第2步：再调用 show_order_detail(orderId) 打开可视化详情界面（数据已缓存）\n' +
+      '⚠️ 本工具仅获取数据，不渲染 UI；UI 渲染由 show_order_detail(orderId) 独立完成。\n' +
+      '⚠️ 不要尝试在本工具的返回结果中注入 _meta.ui，那样会导致 UI 在数据到达前就渲染（旧数据）。\n' +
       '【意图映射】\n' +
       '- 用户说「这个订单的详情」「订单详细信息」「查一下这笔订单」→ 使用此工具\n' +
       '- 用户说「这个订单发货了吗」「我的包裹在哪」→ 使用此工具\n' +
       '- orderId 必填 / orderId is required.\n' +
-      '⚠️【展示规则】调用此工具后，必须立即调用 show_order_detail 以可视化 UI 界面展示结果，不要纯文字展示订单详情。\n' +
       '【物流追踪二步流程】\n' +
       '- 若用户问「包裹到哪了」「物流进度」「快递状态」→ 第一步调用此工具拿到 trackNumber，第二步调用 get_tracking_info([trackNumber])\n' +
-      'Get full order details. ⚠️【Display rule】MUST call show_order_detail(orderId) immediately after to display UI.\n' +
-      '[Intent mapping] "order detail" / "order status" / "has it shipped" → this tool.',
+      '【Two-step display - MUST call in order】\n' +
+      '  Step1: Call this tool (get_order_detail) to fetch data\n' +
+      '  Step2: Call show_order_detail(orderId) to render the visual detail UI (data already cached)\n' +
+      '⚠️ This tool fetches data ONLY; UI rendering is done by show_order_detail(orderId) separately.' +
+      '\n[Intent mapping] "order detail" / "order status" / "has it shipped" → this tool.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -411,7 +426,6 @@ const ORDER_DETAIL_UI_URI = 'ui://cj-mcp/order-detail';
 const READ_ONLY_ORDER_TOOLS = new Set([
   'get_order_list', 'get_pay_order_list', 'get_order_detail',
   'get_account_balance', 'get_merge_progress', 'query_cogs',
-  'show_order_list', 'show_order_detail',
 ]);
 
 export function getOrderTools(): Tool[] {
@@ -419,18 +433,18 @@ export function getOrderTools(): Tool[] {
   const ts = Date.now();
   return orderTools.map(tool => {
     const annotations = READ_ONLY_ORDER_TOOLS.has(tool.name) ? { readOnlyHint: true } : undefined;
+    // 只有展示工具（show_order_list / show_order_detail）才注入 _meta.ui.resourceUri，
+    // 数据返回工具（get_order_list / get_order_detail 等）不应注入 _meta.ui，
+    // 否则 MCP 客户端会在工具调用前就预渲染 UI（显示旧缓存数据），
+    // 且同一个数据工具 + 展示工具会同时触发 UI 渲染导致重复显示两次。
     if (tool.name === 'show_order_list') {
       return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_LIST_UI_URI}?t=${ts}_${seq}` } } };
     }
     if (tool.name === 'show_order_detail') {
       return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_DETAIL_UI_URI}?t=${ts}_${seq}` } } };
     }
-    // 所有工具都注入 _meta.ui，告知 Claude Desktop 此工具有可渲染的 MCP Apps UI
-    return {
-      ...tool,
-      annotations,
-      _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } },
-    };
+    // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
+    return { ...tool, annotations };
   });
 }
 
@@ -797,12 +811,10 @@ export async function handleOrderTool(
         const orderCount = listData.data?.list?.length ?? 0;
         const orderTotal = listData.data?.total ?? orderCount;
 
-        const orderListUri = `ui://cj-mcp/order-list?t=${Date.now()}`;
         return {
           content: [
             { type: 'text', text: JSON.stringify(listData.data, null, 2) + `\n\n✅ 已获取 ${orderCount} 条订单（共 ${orderTotal} 条）。` },
           ],
-          _meta: { ui: { resourceUri: orderListUri } },
         };
       }
 
@@ -860,12 +872,10 @@ export async function handleOrderTool(
         setOrderDetailCache(detailResponse.data);
         const detailOrderId = String(args.orderId);
 
-        const orderDetailUri = `ui://cj-mcp/order-detail?t=${Date.now()}`;
         return {
           content: [
             { type: 'text', text: JSON.stringify(detailResponse.data, null, 2) + `\n\n✅ 订单详情已获取 orderId: "${detailOrderId}"` },
           ],
-          _meta: { ui: { resourceUri: orderDetailUri } },
         };
       }
 

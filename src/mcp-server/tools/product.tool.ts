@@ -27,6 +27,11 @@ export const productTools: Tool[] = [
     name: 'search_products',
     description:
       '搜索CJ平台上已有的商品目录，支持关键词、分类、价格、国家、仓库类型等多维度筛选。\n' +
+      '【两步展示流程 - 必须按顺序执行】\n' +
+      '  第1步：先调用本工具 search_products 获取最新数据\n' +
+      '  第2步：再调用 show_product_list 打开可视化卡片界面（数据已缓存）\n' +
+      '⚠️ 本工具仅获取数据，不渲染 UI；UI 渲染由 show_product_list 独立完成。\n' +
+      '⚠️ 不要尝试在本工具的返回结果中注入 _meta.ui，那样会导致 UI 在数据到达前就渲染（旧数据）。\n' +
       '【意图映射规则】\n' +
       '- 用户说「全球仓商品」「美国仓商品」「美国仓」「US仓」→ isWarehouse=true, countryCode=US\n' +
       '- 用户说「中国仓商品」「CN仓商品」→ isWarehouse=true, countryCode=CN\n' +
@@ -38,10 +43,13 @@ export const productTools: Tool[] = [
       '- 用户说「给我看更多」「下一页」→ pageNum 递增\n' +
       '- 用户说「前N条」「N条数据」「N个商品」→ pageSize=N（未指定时默认 pageSize=20）\n' +
       '- 用户说「我自己的备货」「我的私有库存」「我入库的商品」→ 使用 query_private_inventory\n' +
-      '⚠️【展示规则】调用此工具后，必须立即调用 show_product_list 以卡片 UI 界面展示结果，不要纯文字展示商品列表。\n' +
       '⚠️【搜品 vs 搜索商品 区分】\n' +
       '- 此工具仅搜索 CJ 平台**现有商品目录**中的商品\n' +
       '- 若用户说「帮我搜品」「我想让CJ帮我找货源」「提交搜品需求」「这个商品CJ有没有代发」「我在1688/速卖通/阿里看到一个商品，帮我找」→ 使用 create_sourcing（不是此工具）\n' +
+      '【Two-step display - MUST call in order】\n' +
+      '  Step1: Call this tool (search_products) to fetch data\n' +
+      '  Step2: Call show_product_list to render the visual card UI (data already cached)\n' +
+      '⚠️ This tool fetches data ONLY; UI rendering is done by show_product_list separately.\n' +
       'Search EXISTING products in CJ catalog.\n' +
       '[Intent mapping] "US warehouse" → isWarehouse=true, countryCode=US;\n' +
       '"my own stock/private inventory" → use query_private_inventory instead.\n' +
@@ -155,12 +163,20 @@ export const productTools: Tool[] = [
     name: 'get_product_detail',
     description:
       '查询CJ单个商品的完整详情，包括商品名称、图片、价格、变体(颜色/尺码)、库存、描述、物流属性等。\n' +
+      '【两步展示流程 - 必须按顺序执行】\n' +
+      '  第1步：先调用本工具 get_product_detail 获取最新数据\n' +
+      '  第2步：再调用 show_product_detail(pid) 打开可视化详情界面（数据已缓存）\n' +
+      '⚠️ 本工具仅获取数据，不渲染 UI；UI 渲染由 show_product_detail(pid) 独立完成。\n' +
+      '⚠️ 不要尝试在本工具的返回结果中注入 _meta.ui，那样会导致 UI 在数据到达前就渲染（旧数据）。\n' +
       '【意图映射】\n' +
       '- 用户说「这个商品的详情」「商品详细信息」「查一下这个商品」→ 使用此工具\n' +
       '- 用户说「这个 pid/SKU 的商品」→ 传入 pid 或 productSku\n' +
       '- 用户说「美国仓有多少库存」→ countryCode=US\n' +
       '- pid/productSku/variantSku 三选一必传 / One of pid/productSku/variantSku is required.\n' +
-      '⚠️【展示规则】调用此工具后，必须立即调用 show_product_detail 以图片+规格 UI 界面展示结果，不要纯文字展示商品详情。\n' +
+      '【Two-step display - MUST call in order】\n' +
+      '  Step1: Call this tool (get_product_detail) to fetch data\n' +
+      '  Step2: Call show_product_detail(pid) to render the visual detail UI (data already cached)\n' +
+      '⚠️ This tool fetches data ONLY; UI rendering is done by show_product_detail(pid) separately.\n' +
       'Get full product details: name, images, price, variants(color/size), inventory, description, logistics.\n' +
       '[Intent mapping] "product detail" / "查这个商品" / "show product info" → use this tool with pid or productSku.',
     inputSchema: {
@@ -472,7 +488,7 @@ const READ_ONLY_PRODUCT_TOOLS = new Set([
   'search_products', 'get_category_tree', 'get_warehouses', 'get_product_detail',
   'query_cj_inventory', 'get_my_products', 'get_product_variants',
   'query_sourcing', 'list_product_connections', 'get_product_reviews',
-  'search_products_by_image', 'show_product_list', 'show_product_detail',
+  'search_products_by_image',
 ]);
 
 export function getProductTools(): Tool[] {
@@ -481,6 +497,10 @@ export function getProductTools(): Tool[] {
   return productTools.map(tool => {
     const isReadOnly = READ_ONLY_PRODUCT_TOOLS.has(tool.name);
     const annotations = isReadOnly ? { readOnlyHint: true } : undefined;
+    // 只有展示工具（show_product_list / show_product_detail）才注入 _meta.ui.resourceUri，
+    // 数据返回工具（search_products / get_product_detail 等）不应注入 _meta.ui，
+    // 否则 MCP 客户端会在工具调用前就预渲染 UI（显示旧缓存数据），
+    // 且同一个数据工具 + 展示工具会同时触发 UI 渲染导致重复显示两次。
     if (tool.name === 'show_product_list') {
       return {
         ...tool,
@@ -496,12 +516,8 @@ export function getProductTools(): Tool[] {
         _meta: { ui: { resourceUri: `${PRODUCT_DETAIL_UI_URI}${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
       };
     }
-    // 所有工具都注入 _meta.ui，告知 Claude Desktop 此工具有可渲染的 MCP Apps UI
-    return {
-      ...tool,
-      annotations,
-      _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } },
-    };
+    // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
+    return { ...tool, annotations };
   });
 }
 
@@ -663,7 +679,6 @@ async function handleSearchProducts(args: Record<string, unknown>) {
   // 缓存数据供 UI 资源注入使用（MCP Apps 打开时通过 window.__INITIAL_DATA__ 获取数据）
   setProductListCache(response.data);
 
-  const resourceUri = `ui://cj-mcp/product-list?t=${Date.now()}`;
   return {
     content: [
       { type: 'text', text:
@@ -671,7 +686,6 @@ async function handleSearchProducts(args: Record<string, unknown>) {
         JSON.stringify(response.data, null, 2),
       },
     ],
-    _meta: { ui: { resourceUri } },
   };
 }
 
@@ -758,12 +772,10 @@ async function handleGetProductDetail(args: Record<string, unknown>) {
     setProductDetailCache(response.data);
   }
 
-  const detailResourceUri = `ui://cj-mcp/product-detail?t=${Date.now()}`;
   return {
     content: [
       { type: 'text', text: `🔍 Product detail loaded.\n\n` + JSON.stringify(response.data, null, 2) },
     ],
-    _meta: { ui: { resourceUri: detailResourceUri } },
   };
 }
 
