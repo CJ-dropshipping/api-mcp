@@ -162,35 +162,32 @@ export const authTools: Tool[] = [
  * 其他工具（show_login_form, verify_credentials, check_login_status）同样注入 _meta.ui。
  */
 /**
- * @note 纠正(73次): 所有 auth 工具（非仅 wait_for_login）均需动态生成唯一 resourceUri。
- * 根因：tools/list 返回的 _meta.ui.resourceUri 会被 MCP 客户端（如 Cursor MCP Apps）识别为
- * MCP Apps UI 工具，从而在该工具被调用时/前渲染登录 UI。
- * 若所有 auth 工具共用固定 URI 'ui://cj-mcp/login'，则：
- *   show_login_form / verify_credentials / check_login_status 等每次被 tools/list 暴露时，
- *   Cursor 都会渲染该固定 URI 的登录 UI（因为 URI 相同，客户端可能缓存/复用），
- *   导致一个对话中登录 UI 出现多次。
- * 修复：为每个工具在每次 getAuthTools() 调用时生成唯一的 resourceUri（带时间戳+序列号），
- * 每次都视为"新资源"，客户端不会跨工具/跨调用复用。
- *
- * @note 纠正(Claude Desktop): 所有工具都注入 _meta.ui.resourceUri，确保 Claude Desktop
- * 识别为 MCP Apps UI 工具（即使只读工具也注入）。
+ * @note 纠正(73次): getAuthTools() 现在只在未登录时为 wait_for_login / show_login_form
+ * 注入 _meta.ui.resourceUri；check_login_status / logout / get_rate_limit_status / verify_credentials
+ * 永远不注入 _meta.ui，避免 Cursor 在 tools/list 时误渲染登录 UI（即使已登录也会弹出）。
+ * 登录状态由 handleAuthTool() 内部判断，返回相应的文字提示。
  */
 const AUTH_LOGIN_UI_BASE = 'ui://cj-mcp/login';
 
 export function getAuthTools(): Tool[] {
-  // 每次生成唯一时间戳+序列号 URI，确保 Claude Desktop/VS Code Copilot 在当前对话位置创建新登录 UI
-  const uniqueUri = `${AUTH_LOGIN_UI_BASE}?t=${Date.now()}_${++loginUriSeq}`;
+  const valid = isSessionValid();
+
   return authTools.map(tool => {
-    // 所有 auth 工具（含 show_login_form, verify_credentials, check_login_status 等）
-    // 均使用唯一 URI，避免 MCP 客户端因固定 URI 而重复渲染登录 UI
-    return {
-      ...tool,
-      _meta: {
-        ui: {
-          resourceUri: uniqueUri,
+    // 只有 wait_for_login / show_login_form 需要 _meta.ui（展示登录 UI）
+    // check_login_status / logout / get_rate_limit_status / verify_credentials 永远不注入
+    // 否则 Cursor 在 tools/list 时就会渲染登录 UI，即使已登录也会弹出
+    if (!valid && (tool.name === 'show_login_form')) {
+      const uniqueUri = `${AUTH_LOGIN_UI_BASE}?t=${Date.now()}_${++loginUriSeq}`;
+      return {
+        ...tool,
+        _meta: {
+          ui: {
+            resourceUri: uniqueUri,
+          },
         },
-      },
-    };
+      };
+    }
+    return tool;
   });
 }
 
@@ -300,7 +297,6 @@ export async function handleAuthTool(
        * Cursor 需要从 tools/call 返回结果的 _meta.ui 才能渲染 UI。
        * CJ_UI_IMMEDIATE=true 时立即返回 _meta，不阻塞轮询，避免 Cursor 等待超时后才显示界面。
        */
-      const loginUiMeta = buildLoginUiMeta();
 
       if (isSessionValid()) {
         const session = getSession();
@@ -313,7 +309,6 @@ export async function handleAuthTool(
               `用户 / User: ${user}`,
             ].join('\n'),
           }],
-          // _meta: loginUiMeta,
         };
       }
 
@@ -330,7 +325,6 @@ export async function handleAuthTool(
               'After login, let me know and I will call check_login_status to confirm.',
             ].join('\n'),
           }],
-          // _meta: loginUiMeta,
         };
       }
 
@@ -343,7 +337,6 @@ export async function handleAuthTool(
               'Login wait is already in progress. Please complete login in the existing window, then let me know.',
             ].join('\n'),
           }],
-          // _meta: loginUiMeta,
         };
       }
 
@@ -366,7 +359,6 @@ export async function handleAuthTool(
                   `用户 / User: ${user}`,
                 ].join('\n'),
               }],
-              // _meta: loginUiMeta,
             };
           }
           await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
@@ -388,7 +380,6 @@ export async function handleAuthTool(
             ].join('\n'),
           }],
           isError: false,
-          // _meta: loginUiMeta,
         };
       } finally {
         waitForLoginInProgress = false;
