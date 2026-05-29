@@ -28,6 +28,22 @@ export const logisticsTools: Tool[] = [
           type: 'string',
           description: '目的国家代码(如US) / Destination country code (e.g. US)',
         },
+        zip: {
+          type: 'string',
+          description: '目的国邮编，用于精确计算偏远地区运费 / Destination zip/postal code for accurate shipping cost calculation',
+        },
+        taxId: {
+          type: 'string',
+          description: '收件人税号（如欧盟IOSS税号），用于跨境税务计算 / Recipient tax ID (e.g. EU IOSS number) for cross-border tax calculation',
+        },
+        houseNumber: {
+          type: 'string',
+          description: '门牌号，部分物流需要精确地址才能计算 / House number for precise address (required by some logistics carriers)',
+        },
+        iossNumber: {
+          type: 'string',
+          description: 'IOSS税号，用于欧盟VAT代扣代缴 / IOSS number for EU VAT collection',
+        },
         products: {
           type: 'array',
           items: {
@@ -95,21 +111,55 @@ export const logisticsTools: Tool[] = [
       '运费试算增强版，支持按平台（Shopify/WooCommerce等）过滤的运费内容试算。',
       '触发场景：「计算运费（Shopify平台）」「查看某平台的运费选项」「calculate freight tip」「某平台的适用运费方式」。',
       '必填参数：srcAreaCode（发货国）、destAreaCode（目的国）。',
-      '选填参数：skuList（SKU列表）、platform（平台名称 Shopify/WooCommerce等）、zip（邮编）、totalGoodsAmount（货物总实际价値）。',
     ].join(' '),
     inputSchema: {
       type: 'object' as const,
       properties: {
         srcAreaCode: { type: 'string', description: '发货国家代码（必填，如 CN）/ Origin country code (required, e.g. CN)' },
-        destAreaCode: { type: 'string', description: '目的地家代码（必填，如 US）/ Destination country code (required, e.g. US)' },
+        destAreaCode: { type: 'string', description: '目的地国家代码（必填，如 US）/ Destination country code (required, e.g. US)' },
+        zip: { type: 'string', description: '目的国邮编，用于偏远地区精确计算 / Destination zip code for accurate shipping cost' },
+        houseNumber: { type: 'string', description: '门牌号，部分物流需要精确地址 / House number for precise address' },
+        iossNumber: { type: 'string', description: 'IOSS税号，用于欧盟VAT计算 / IOSS number for EU VAT calculation' },
+        storageIdList: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '分区仓库ID列表，用于指定仓库发货 / List of warehouse/storage IDs for shipping from specific warehouse',
+        },
+        platforms: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '平台列表，支持多平台筛选（如 shopify, ebay, amazon, tiktok, etsy）/ Platform list for filtering shipping options',
+        },
+        weight: {
+          type: 'number',
+          description: '总重量（克），用于精确运费计算 / Total weight in grams for accurate freight calculation',
+        },
+        volume: {
+          type: 'number',
+          description: '包裹总体积（立方厘米 cm³），用于计算体积重 / Total volume in cubic centimeters for volumetric weight',
+        },
+        totalGoodsAmount: {
+          type: 'number',
+          description: '货物总价值（USD），用于报关和IOSS计算 / Total goods value in USD for customs declaration and IOSS',
+        },
         skuList: {
           type: 'array',
           items: { type: 'string' },
-          description: 'SKU列表（可选）/ SKU list (optional)',
+          description: 'SKU列表 / SKU list (deprecated, use freightTrialSkuList instead)',
         },
-        platform: { type: 'string', description: '平台名称（可选，如 Shopify）/ Platform name (optional, e.g. Shopify)' },
-        zip: { type: 'string', description: '目的地邮编（可选）/ Destination zip code (optional)' },
-        totalGoodsAmount: { type: 'number', description: '货物实际价値（可选）/ Total goods amount (optional)' },
+        freightTrialSkuList: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              sku: { type: 'string', description: 'SKU编码 / SKU code' },
+              skuQuantity: { type: 'number', description: '购买数量 / Purchase quantity' },
+              skuWeight: { type: 'number', description: '单个重量（克）/ Single item weight in grams' },
+              skuVolume: { type: 'number', description: '单个体积（立方厘米）/ Single item volume in cm³' },
+            },
+          },
+          description: '试算SKU列表（推荐），支持指定数量和重量体积 / Trial SKU list with quantity and weight/volume details',
+        },
       },
       required: ['srcAreaCode', 'destAreaCode'],
     },
@@ -159,6 +209,10 @@ async function handleCalculateFreight(args: Record<string, unknown>) {
     endCountryCode: args.endCountryCode,
     products: args.products,
   };
+  if (args.zip) body.zip = String(args.zip);
+  if (args.taxId) body.taxId = String(args.taxId);
+  if (args.houseNumber) body.houseNumber = String(args.houseNumber);
+  if (args.iossNumber) body.iossNumber = String(args.iossNumber);
 
   const response = await httpClient.request(ENDPOINTS.logistic.freightCalculate, {
     body,
@@ -251,15 +305,41 @@ async function handleCalculateFreightTip(args: Record<string, unknown>) {
     srcAreaCode: String(args.srcAreaCode),
     destAreaCode: String(args.destAreaCode),
   };
-  if (Array.isArray(args.skuList) && args.skuList.length > 0) {
+  // 详细SKU试算列表（优先使用）
+  if (Array.isArray(args.freightTrialSkuList) && args.freightTrialSkuList.length > 0) {
+    reqDTO.freightTrialSkuList = args.freightTrialSkuList.map((item: unknown) => {
+      const s = item as Record<string, unknown>;
+      return {
+        sku: s.sku,
+        skuQuantity: s.skuQuantity ?? 1,
+        skuWeight: s.skuWeight,
+        skuVolume: s.skuVolume,
+      };
+    });
+    // 同步 skuList 供兼容性
+    reqDTO.skuList = (args.freightTrialSkuList as Array<Record<string, unknown>>).map(i => String(i.sku)).filter(Boolean);
+  } else if (Array.isArray(args.skuList) && args.skuList.length > 0) {
+    // 降级：仅有简单 SKU 列表
     reqDTO.skuList = args.skuList;
     reqDTO.freightTrialSkuList = args.skuList.map((sku: unknown) => ({
       sku: String(sku),
       skuQuantity: 1,
     }));
   }
-  if (args.platform) reqDTO.platforms = [String(args.platform)];
+  // 平台支持数组或单个值
+  if (args.platforms && Array.isArray(args.platforms) && args.platforms.length > 0) {
+    reqDTO.platforms = args.platforms;
+  } else if (args.platform) {
+    reqDTO.platforms = [String(args.platform)];
+  }
   if (args.zip) reqDTO.zip = String(args.zip);
+  if (args.houseNumber) reqDTO.houseNumber = String(args.houseNumber);
+  if (args.iossNumber) reqDTO.iossNumber = String(args.iossNumber);
+  if (Array.isArray(args.storageIdList) && args.storageIdList.length > 0) {
+    reqDTO.storageIdList = args.storageIdList;
+  }
+  if (args.weight != null) reqDTO.weight = Number(args.weight);
+  if (args.volume != null) reqDTO.volume = Number(args.volume);
   if (args.totalGoodsAmount !== undefined) reqDTO.totalGoodsAmount = Number(args.totalGoodsAmount);
 
   const response = await httpClient.request(ENDPOINTS.logistic.freightCalculateTip, {

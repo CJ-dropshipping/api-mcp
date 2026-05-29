@@ -100,6 +100,10 @@ export const stockTools: Tool[] = [
           type: 'string',
           description: '商品ID（必填），来自 search_products 或 get_product_detail 返回的 pid / Product ID (required), from search_products or get_product_detail response field "pid"',
         },
+        countryCode: {
+          type: 'string',
+          description: '国家代码（可选），筛选指定国家的库存分布 / Country code (optional), filter inventory by country e.g. US, CN',
+        },
       },
       required: ['pid'],
     },
@@ -276,9 +280,11 @@ export async function handleStockTool(
             isError: true,
           };
         }
+        const params: Record<string, string> = { pid: String(args.pid) };
+        if (args.countryCode) params.countryCode = String(args.countryCode);
         const invResponse = await httpClient.request(ENDPOINTS.product.stockGetInventoryByPid, {
           method: 'GET',
-          params: { pid: String(args.pid) },
+          params,
           tier: 'read',
         });
         if (!isApiSuccess(invResponse)) {

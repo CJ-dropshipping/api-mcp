@@ -17,6 +17,10 @@ export const shopTools: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
+        keyword: {
+          type: 'string',
+          description: '搜索关键词，按店铺名称过滤 / Search keyword to filter shops by name',
+        },
         pageNum: { type: 'number', description: '页码 / Page number' },
         pageSize: { type: 'number', description: '每页数量 / Page size' },
       },
@@ -97,12 +101,14 @@ export async function handleShopTool(
         /**
          * @note 纠正: shop/getShops 是 GET 接口
          */
+        const params: Record<string, string> = {
+          pageNum: String((args.pageNum as number) || 1),
+          pageSize: String(Math.min((args.pageSize as number) || 20, 50)),
+        };
+        if (args.keyword) params.keyword = String(args.keyword);
         const response = await httpClient.request(ENDPOINTS.shop.getShops, {
           method: 'GET',
-          params: {
-            pageNum: String((args.pageNum as number) || 1),
-            pageSize: String(Math.min((args.pageSize as number) || 20, 50)),
-          },
+          params,
           tier: 'read',
         });
         if (!isApiSuccess(response)) {
