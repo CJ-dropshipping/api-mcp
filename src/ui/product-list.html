@@ -90,7 +90,7 @@
           var price = p.sellPrice != null ? p.sellPrice : (p.nowPrice != null ? p.nowPrice : '-');
           var img = p.productImage || p.bigImage || p.imgUrl || '';
           var sku = p.productSku || p.sku || '';
-          var stock = p.totalVerifiedInventory != null ? p.totalVerifiedInventory : (p.warehouseInventoryNum != null ? p.warehouseInventoryNum : null);
+          var stock = p.warehouseInventoryNum != null ? p.warehouseInventoryNum : (p.totalVerifiedInventory != null ? p.totalVerifiedInventory : null);
           var pid = p.pid || '';
           var productUrl = p.productUrl || (pid ? 'https://cjdropshipping.com/product/' + encodeURIComponent(name.replace(/ /g,'-').toLowerCase()) + '-p-' + pid + '.html' : '');
           var categoryName = p.categoryName || p.threeCategoryName || p.twoCategoryName || p.oneCategoryName || '';
