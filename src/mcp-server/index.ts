@@ -288,7 +288,6 @@ async function main() {
         console.error(`[MCP] HTTP Server running on http://localhost:${port}/mcp`);
         console.error(`[MCP] Health check: http://localhost:${port}/health`);
         console.error(`[MCP] Tools: ${getToolsList().length}`);
-        console.error(`[MCP] Use ngrok: ngrok http ${port}`);
       });
     }
   } else {

@@ -91,8 +91,10 @@ export const productTools: Tool[] = [
           description: '包邮筛选：0-不包邮，1-包邮 / Free shipping filter: 0-not free, 1-free shipping',
         },
         productType: {
-          type: 'number',
-          description: '商品类型：4-供应商商品，10-视频商品，11-非视频商品 / Product type: 4-Supplier, 10-Video, 11-Non-video',
+          type: 'string',
+          description:
+            '商品类型（listV2 API 使用字符串格式）：ORDINARY_PRODUCT-普通商品，SUPPLIER_PRODUCT-供应商商品 / ' +
+            'Product type: ORDINARY_PRODUCT (regular), SUPPLIER_PRODUCT (supplier)',
         },
         productFlag: {
           type: 'number',
@@ -121,6 +123,73 @@ export const productTools: Tool[] = [
             '用户说「库存大于N」「库存至少N件」「库存不低于N」→ 传入对应数值（最小为1）。\n' +
             'Minimum warehouse inventory (≥1), default 1. Only returns products with stock. ' +
             'User: "stock > N" / "at least N in stock" → pass N (min 1).',
+        },
+        lv2categoryList: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '二级类目ID列表，用于精确筛选 / List of second-level category IDs for precise filtering',
+        },
+        lv3categoryList: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '三级类目ID列表 / List of third-level category IDs',
+        },
+        features: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '附加特性，用于控制返回数据范围。可选值：\n' +
+            '  enable_description — 返回商品详情\n' +
+            '  enable_category — 返回商品类目信息\n' +
+            '  enable_combine — 返回组合商品信息\n' +
+            '  enable_video — 返回视频ID\n' +
+            'Extra features: enable_description, enable_category, enable_combine, enable_video',
+        },
+        zonePlatform: {
+          type: 'string',
+          description:
+            '专区平台，用于筛选适合特定电商平台的商品。可选值：\n' +
+            '  shopify / ebay / amazon / tiktok / etsy / walmart 等\n' +
+            'Platform filter: shopify, ebay, amazon, tiktok, etsy, walmart, etc.',
+        },
+        supplierId: {
+          type: 'string',
+          description: '供应商ID，筛选指定供应商的商品 / Supplier ID to filter products by supplier',
+        },
+        isSelfPickup: {
+          type: 'number',
+          description: '是否支持自提：0-不支持，1-支持 / Self pickup: 0-no, 1-yes',
+        },
+        hasCertification: {
+          type: 'number',
+          description: '是否资质认证：0-无，1-有 / Certification: 0-no, 1-yes',
+        },
+        timeStart: {
+          type: 'string',
+          description:
+            '上架时间起始（时间戳毫秒），筛选在此之后上架的商品 / Start time for listing date (ms timestamp)',
+        },
+        timeEnd: {
+          type: 'string',
+          description:
+            '上架时间截止（时间戳毫秒），筛选在此之前上架的商品 / End time for listing date (ms timestamp)',
+        },
+        endWarehouseInventory: {
+          type: 'number',
+          description:
+            '结束库存上限，筛选库存数量小于等于该值的商品。\n' +
+            '用户说「库存不超过N」「最多N件」→ 配合 startWarehouseInventory 一起使用。\n' +
+            'End warehouse inventory (≤N). Use with startWarehouseInventory for range.',
+        },
+        verifiedWarehouse: {
+          type: 'number',
+          description:
+            '验证库存类型筛选：0/不传=全部，1=已验证库存，2=待验证库存 / ' +
+            'Verified warehouse filter: 0/all(default), 1=verified, 2=pending verification',
+        },
+        customization: {
+          type: 'number',
+          description: '是否定制商品：0-否，1-是 / Customization: 0-no, 1-yes',
         },
       },
       required: [],
@@ -199,9 +268,10 @@ export const productTools: Tool[] = [
           description: '国家代码，只返回该国有库存的变体，如 US/CN/GB / Country code to filter variants with inventory in that country',
         },
         features: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '附加功能：enable_combine（含组合变体），enable_video（含视频）/ Extra features: enable_combine, enable_video',
+          type: 'string',
+          description:
+            '附加功能，多个用逗号分隔：enable_combine（含组合变体），enable_video（含视频）/ ' +
+            'Extra features (comma-separated): enable_combine, enable_video',
         },
       },
       required: [],
@@ -241,6 +311,9 @@ export const productTools: Tool[] = [
         startAt: { type: 'string', description: '添加时间起始（ISO或时间戳）/ Start time for when product was added' },
         endAt: { type: 'string', description: '添加时间截止 / End time' },
         isListed: { type: 'number', description: '是否已刊登 0/1 / Is listed: 0=no, 1=yes' },
+        visiable: { type: 'number', description: '是否可见 0/1 / Visibility: 0=no, 1=yes' },
+        hasPacked: { type: 'number', description: '是否已包装 0/1 / Packed status: 0=no, 1=yes' },
+        hasVirPacked: { type: 'number', description: '是否已虚拟包装 0/1 / Virtual packing status: 0=no, 1=yes' },
         pageNum: { type: 'number', description: '页码，默认 1 / Page number' },
         pageSize: { type: 'number', description: '每页数量，默认 20，最大 200 / Page size, max 200' },
       },
@@ -307,10 +380,17 @@ export const productTools: Tool[] = [
         sourceIds: {
           type: 'array',
           items: { type: 'string' },
-          description: '采购需求ID数组（必填）/ Array of CJ sourcing IDs (required)',
+          description: '采购需求ID数组 / Array of CJ sourcing IDs',
         },
+        sourceStatuses: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '按状态筛选，如 "processing"/"finished"/"cancelled" / Filter by status: processing/finished/cancelled',
+        },
+        pageNum: { type: 'number', description: '页码，默认 1 / Page number, default 1' },
+        pageSize: { type: 'number', description: '每页数量，默认 20 / Page size, default 20' },
       },
-      required: ['sourceIds'],
+      required: [],
     },
   },
   {
@@ -628,15 +708,43 @@ async function handleSearchProducts(args: Record<string, unknown>) {
   if (args.minPrice != null) params.startSellPrice = String(args.minPrice);
   if (args.maxPrice != null) params.endSellPrice = String(args.maxPrice);
   if (args.addMarkStatus != null) params.addMarkStatus = String(args.addMarkStatus);
+  // productType API 接受字符串如 "ORDINARY_PRODUCT"，也接受数字
   if (args.productType != null) params.productType = String(args.productType);
   if (args.productFlag != null) params.productFlag = String(args.productFlag);
   if (args.sort) params.sort = String(args.sort);
   if (args.orderBy != null) params.orderBy = String(args.orderBy);
-  params.page = String((args.pageNum as number) || 1);
-  params.size = String(Math.min((args.pageSize as number) || 20, 100));
   // 起始库存：默认 1（只搜索有库存商品），用户指定时取 max(用户值, 1)
   const userInventory = args.startWarehouseInventory != null ? Number(args.startWarehouseInventory) : 1;
   params.startWarehouseInventory = String(Math.max(userInventory, 1));
+  // 新增参数：二级/三级类目列表
+  if (Array.isArray(args.lv2categoryList) && args.lv2categoryList.length > 0) {
+    params.lv2categoryList = (args.lv2categoryList as string[]).join(',');
+  }
+  if (Array.isArray(args.lv3categoryList) && args.lv3categoryList.length > 0) {
+    params.lv3categoryList = (args.lv3categoryList as string[]).join(',');
+  }
+  // 新增参数：附加特性
+  if (Array.isArray(args.features) && args.features.length > 0) {
+    params.features = (args.features as string[]).join(',');
+  }
+  // 新增参数：专区平台
+  if (args.zonePlatform) params.zonePlatform = String(args.zonePlatform);
+  // 新增参数：供应商ID
+  if (args.supplierId) params.supplierId = String(args.supplierId);
+  // 新增参数：是否支持自提
+  if (args.isSelfPickup != null) params.isSelfPickup = String(args.isSelfPickup);
+  // 新增参数：是否有资质
+  if (args.hasCertification != null) params.hasCertification = String(args.hasCertification);
+  // 新增参数：上架时间区间
+  if (args.timeStart) params.timeStart = String(args.timeStart);
+  if (args.timeEnd) params.timeEnd = String(args.timeEnd);
+  // 新增参数：结束库存、验证库存类型、是否定制
+  if (args.endWarehouseInventory != null) params.endWarehouseInventory = String(args.endWarehouseInventory);
+  if (args.verifiedWarehouse != null) params.verifiedWarehouse = String(args.verifiedWarehouse);
+  if (args.customization != null) params.customization = String(args.customization);
+  // 分页
+  params.page = String((args.pageNum as number) || 1);
+  params.size = String(Math.min((args.pageSize as number) || 20, 100));
 
   const response = await httpClient.request(ENDPOINTS.product.listV2, {
     method: 'GET',
@@ -745,9 +853,7 @@ async function handleGetProductDetail(args: Record<string, unknown>) {
   if (args.productSku) params.productSku = String(args.productSku);
   if (args.variantSku) params.variantSku = String(args.variantSku);
   if (args.countryCode) params.countryCode = String(args.countryCode);
-  if (Array.isArray(args.features) && args.features.length > 0) {
-    params.features = (args.features as string[]).join(',');
-  }
+  if (args.features) params.features = String(args.features);
 
   const response = await httpClient.request(ENDPOINTS.product.query, {
     method: 'GET',
@@ -824,7 +930,10 @@ async function handleGetMyProducts(args: Record<string, unknown>) {
   if (args.startAt) params.startAt = String(args.startAt);
   if (args.endAt) params.endAt = String(args.endAt);
   if (args.isListed !== undefined) params.isListed = String(args.isListed);
-  if (args.pageNum) params.pageNum = String(args.pageNum);
+  if (args.visiable !== undefined) params.visiable = String(args.visiable);
+  if (args.hasPacked !== undefined) params.hasPacked = String(args.hasPacked);
+  if (args.hasVirPacked !== undefined) params.hasVirPacked = String(args.hasVirPacked);
+  params.pageNum = String(Number(args.pageNum) || 1);
   const pageSize = Math.min(Number(args.pageSize) || 20, 200);
   params.pageSize = String(pageSize);
 
@@ -902,16 +1011,20 @@ async function handleCreateSourcing(args: Record<string, unknown>) {
 async function handleQuerySourcing(args: Record<string, unknown>) {
   /**
    * @note 新增(第14次): query_sourcing，POST /product/sourcing/query。
-   * 参数 sourceIds 为采购ID数组（从 create_sourcing 获取）。
+   * 支持按 IDs 精确查询，也支持按状态筛选+分页列表。
    */
-  if (!Array.isArray(args.sourceIds) || args.sourceIds.length === 0) {
-    return {
-      content: [{ type: 'text', text: '❌ 请提供 sourceIds 数组 / Please provide sourceIds array.' }],
-      isError: true,
-    };
+  const body: Record<string, unknown> = {};
+  if (Array.isArray(args.sourceIds) && args.sourceIds.length > 0) {
+    body.sourceIds = args.sourceIds;
   }
+  if (Array.isArray(args.sourceStatuses) && args.sourceStatuses.length > 0) {
+    body.sourceStatuses = args.sourceStatuses;
+  }
+  if (args.pageNum != null) body.pageNum = Number(args.pageNum);
+  if (args.pageSize != null) body.pageSize = Math.min(Number(args.pageSize) || 20, 100);
+
   const response = await httpClient.request(ENDPOINTS.product.sourcingQuery, {
-    body: { sourceIds: args.sourceIds },
+    body,
     tier: 'read',
   });
   if (!isApiSuccess(response)) {

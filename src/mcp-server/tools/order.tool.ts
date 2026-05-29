@@ -37,7 +37,12 @@ export const orderTools: Tool[] = [
       '  shippingCity（城市）、shippingAddress（街道地址）、shippingZip（邮编）、\n' +
       '  logisticName（物流名称，须先通过 calculate_freight 获取）、\n' +
       '  fromCountryCode（发货国代码，通常 "CN"）、products[{vid, quantity}]\n' +
-      '成功后将返回订单ID和支付链接。\n\n' +
+      '可选字段：payType（支付方式：1=页面支付默认/2=余额支付/3=仅创建）、isSandbox（沙盒订单：0=正常/1=沙盒）、\n' +
+      '  taxId（欧盟VAT税号）、remark（订单备注）、email（邮箱）、houseNumber（门牌号）、shippingAddress2（地址2）、\n' +
+      '  iossType（IOSS类型：1=无/2=自有/3=CJ代缴）、iossNumber（IOSS编号）、platform（平台：shopify/ebay等）、\n' +
+      '  shopLogisticsType（发货模式：1=平台物流/2=商家物流/3=CJ指定）、storageId（仓库ID）、\n' +
+      '  storeName（店铺名称）、storeOrderTime（下单时间戳秒）、orderFlow（订单流程：1=手工/2=店铺订单）\n' +
+      '商品行可选：sku（CJ变体SKU，与vid二选一）、unitPrice（商品单价USD）、storeLineItemId（店铺lineItemId）、podProperties（POD定制信息）\n\n' +
       'Create order (V2). All required field names MUST match exactly as defined in the schema properties.\n' +
       'DO NOT rename fields. Collect ALL required fields before calling.',
     inputSchema: {
@@ -54,20 +59,40 @@ export const orderTools: Tool[] = [
             shippingCountryCode: { type: 'string', description: '2位国家代码，如 "US"（必填）/ 2-letter country code (required)' },
             shippingProvince: { type: 'string', description: '省/州（必填）/ Province or state (required)' },
             shippingCity: { type: 'string', description: '城市（必填）/ City (required)' },
+            shippingCounty: { type: 'string', description: '县 / County' },
             shippingAddress: { type: 'string', description: '街道地址（必填）/ Street address (required)' },
+            shippingAddress2: { type: 'string', description: '地址2 / Address line 2' },
             shippingZip: { type: 'string', description: '邮编 / ZIP code' },
+            houseNumber: { type: 'string', description: '门牌号 / House number' },
+            email: { type: 'string', description: '邮箱 / Email address' },
+            taxId: { type: 'string', description: '欧盟VAT税号 / EU VAT tax ID' },
+            remark: { type: 'string', description: '订单备注 / Order remark' },
             logisticName: { type: 'string', description: '物流名称（必填），来自 calculate_freight 返回值 / Logistics name from calculate_freight (required)' },
             fromCountryCode: { type: 'string', description: '发货国代码（必填），通常为 "CN" / Source country code, usually "CN" (required)' },
+            payType: { type: 'number', description: '支付方式：1=页面支付(默认)/2=余额支付/3=仅创建不支付 / Payment type: 1=page/2=balance/3=create only' },
+            isSandbox: { type: 'number', description: '沙盒订单：0=正常/1=沙盒（模拟支付不扣款）/ Sandbox mode: 0=normal, 1=sandbox (no real charge)' },
+            platform: { type: 'string', description: '平台类型，如 shopify/ebay/amazon/walmart 等 / Platform type: shopify, ebay, amazon, walmart, etc.' },
+            shopLogisticsType: { type: 'number', description: '发货模式：1=平台物流/2=商家物流(默认)/3=CJ指定仓库 / Shipping mode: 1=platform/2=merchant(default)/3=CJ assigned' },
+            storageId: { type: 'string', description: 'CJ仓库ID（shopLogisticsType=1时有效）/ CJ warehouse ID (valid when shopLogisticsType=1)' },
+            iossType: { type: 'number', description: 'IOSS类型：1=无IOSS/2=自有IOSS/3=CJ代缴 / IOSS type: 1=none/2=self/3=CJ handles' },
+            iossNumber: { type: 'string', description: 'IOSS编号（iosType=2时填写）/ IOSS number (required when iossType=2)' },
+            storeName: { type: 'string', description: '店铺名称（需与CJ系统中的店铺名称一致）/ Store name (must match CJ system)' },
+            storeOrderTime: { type: 'string', description: '消费者下单时间（时间戳秒）/ Consumer order time (Unix timestamp in seconds)' },
+            orderFlow: { type: 'number', description: '订单流程：1=手工订单流程(默认)/2=店铺订单流程 / Order flow: 1=manual(default)/2=store order' },
             products: {
               type: 'array',
               description: '商品列表（必填）/ Product list (required)',
               items: {
                 type: 'object',
                 properties: {
-                  vid: { type: 'string', description: '变体ID / Variant ID' },
-                  quantity: { type: 'number', description: '数量 / Quantity' },
+                  vid: { type: 'string', description: 'CJ变体ID（与sku二选一）/ CJ variant ID (alternative to sku)' },
+                  sku: { type: 'string', description: 'CJ变体SKU（与vid二选一）/ CJ variant SKU (alternative to vid)' },
+                  quantity: { type: 'number', description: '数量（必填）/ Quantity (required)' },
+                  unitPrice: { type: 'number', description: '商品单价USD / Unit price in USD' },
+                  storeLineItemId: { type: 'string', description: '店铺订单的lineItemId / Store order lineItemId' },
+                  podProperties: { type: 'string', description: 'POD定制信息（JSON字符串）/ POD customization info (JSON string)' },
                 },
-                required: ['vid', 'quantity'],
+                required: ['quantity'],
               },
             },
           },
@@ -137,18 +162,21 @@ export const orderTools: Tool[] = [
   {
     name: 'merge_orders',
     description:
-      '自动合单，将多个待处理订单合并以节省运费。适用于批量订单优化 / ' +
-      'Auto merge orders to save shipping cost. Used for batch order optimization.',
+      '自动匹配合单列表，获取可合并的订单分组以便进行合单操作。适用于批量订单优化 / ' +
+      'Auto match mergeable orders to save shipping cost. Used for batch order optimization.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        orderIds: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '需要合并的订单ID列表 / List of order IDs to merge',
+        filterOrder: {
+          type: 'boolean',
+          description: '是否过滤手动移除的订单：true=过滤（默认）/ false=不过滤 / Filter manually removed orders: true=filter(default), false=include all',
         },
+        orderStatus: {
+          type: 'number',
+          description: '订单状态：100=完整订单页 / 101=购物车页 / Order status: 100=complete orders / 101=cart page',
+        }
       },
-      required: ['orderIds'],
+      required: ['filterOrder', 'orderStatus'],
     },
   },
   {
@@ -522,12 +550,37 @@ export async function handleOrderTool(
           city: 'shippingCity',
           address: 'shippingAddress', streetAddress: 'shippingAddress',
           zip: 'shippingZip', zipCode: 'shippingZip', postalCode: 'shippingZip',
+          // 新增字段别名映射
+          county: 'shippingCounty', district: 'shippingCounty',
+          address2: 'shippingAddress2',
+          mail: 'email', recipientEmail: 'email',
+          vatId: 'taxId', vatNumber: 'taxId',
+          ioss: 'iossNumber',
         };
         for (const [wrong, correct] of Object.entries(topLevelMap)) {
           if (rawInfo[wrong] !== undefined && rawInfo[correct] === undefined) {
             rawInfo[correct] = rawInfo[wrong];
             delete rawInfo[wrong];
           }
+        }
+
+        // 商品行字段标准化（vid/sku/unitPrice/storeLineItemId/podProperties）
+        if (Array.isArray(rawInfo.products)) {
+          rawInfo.products = (rawInfo.products as Array<Record<string, unknown>>).map(p => {
+            const norm: Record<string, unknown> = { ...p };
+            const prodMap: Record<string, string> = {
+              variantId: 'vid', variantSku: 'sku',
+              price: 'unitPrice', itemPrice: 'unitPrice',
+              lineItemId: 'storeLineItemId',
+            };
+            for (const [w, c] of Object.entries(prodMap)) {
+              if (norm[w] !== undefined && norm[c] === undefined) {
+                norm[c] = norm[w];
+                delete norm[w];
+              }
+            }
+            return norm;
+          });
         }
 
         // 若未提供 orderNumber，自动生成一个时间戳订单号
@@ -726,9 +779,24 @@ export async function handleOrderTool(
         };
       }
 
-      case 'merge_orders':
-        return await callApi(ENDPOINTS.shopping.mergeOrderAutoMatch, {
-        }, 'write');
+      case 'merge_orders': {
+        /**
+         * @note 纠正(3次): 改用 autoMatchMergeOrderListV3 获取可合单列表。
+         * filterOrder=true 过滤手动移除单，orderStatus=100 查完整订单页。
+         * 返回可合单的分组列表，用户需确认后再用 submit_merge_order 提交合单。
+         */
+        const mergeResp = await httpClient.request(ENDPOINTS.shopping.mergeOrderAutoMatch, {
+          body: {
+            filterOrder: args.filterOrder !== false,
+            orderStatus: (args.orderStatus as number) || 100,
+          },
+          tier: 'read',
+        });
+        if (!isApiSuccess(mergeResp)) {
+          return { content: [{ type: 'text', text: `合单查询失败 / Merge query failed: ${mergeResp.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(mergeResp.data, null, 2) }] };
+      }
 
       case 'get_merge_progress':
         return await callApi(ENDPOINTS.shopping.mergeOrderAutoProgress, {
