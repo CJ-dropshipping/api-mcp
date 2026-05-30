@@ -9,7 +9,7 @@ import { ENDPOINTS, API_VERSION_PREFIX } from '../../api-client/endpoints.js';
 import { ensureAccessToken } from '../../auth/session.js';
 import { getEnvConfig } from '../../config/env.js';
 import { logger, isDebugMode } from '../../utils/logger.js';
-import { setOrderListCache, setOrderDetailCache } from '../resources/index.js';
+import { setOrderListCache, setOrderDetailCache, getOrderListCache, getOrderDetailCache } from '../resources/index.js';
 
 export const orderTools: Tool[] = [
   {
@@ -466,18 +466,22 @@ export function getOrderTools(): Tool[] {
     // 否则 MCP 客户端会在工具调用前就预渲染 UI（显示旧缓存数据），
     // 且同一个数据工具 + 展示工具会同时触发 UI 渲染导致重复显示两次。
     if (tool.name === 'show_order_list') {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_LIST_UI_URI}?t=${ts}_${seq}` } } };
+      // @note 修改(第5次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
+      // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
+      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } } };
     }
     if (tool.name === 'show_order_detail') {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: `${ORDER_DETAIL_UI_URI}?t=${ts}_${seq}` } } };
+      // @note 修改(第5次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
+      // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
+      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_DETAIL_UI_URI } } };
     }
     // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
     return { ...tool, annotations };
   });
 }
 
-/** 工具返回类型：支持 text/resource content + _meta */
-type OrderToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; _meta?: Record<string, unknown> };
+/** 工具返回类型：支持 text/resource content + _meta + structuredContent */
+type OrderToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; structuredContent?: Record<string, unknown>; _meta?: Record<string, unknown> };
 
 export async function handleOrderTool(
   name: string,
@@ -887,10 +891,13 @@ export async function handleOrderTool(
       }
 
       case 'show_order_list': {
-        const olUri = `ui://cj-mcp/order-list?t=${Date.now()}`;
+        // @note 新增(第5次提交): 通过 structuredContent 把最新订单列表数据推送给 iframe，
+        // 解决 ChatGPT 缓存 HTML 后 window.__INITIAL_DATA__ 不更新的问题。
+        const olData = getOrderListCache();
         return {
           content: [{ type: 'text', text: '✅ 订单列表界面已打开 / Order list UI opened.' }],
-          _meta: { ui: { resourceUri: olUri } },
+          structuredContent: (olData ?? {}) as Record<string, unknown>,
+          _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } },
         };
       }
 
@@ -908,10 +915,13 @@ export async function handleOrderTool(
         if (isApiSuccess(odDetailResp) && odDetailResp.data) {
           setOrderDetailCache(odDetailResp.data);
         }
-        const odUri = `ui://cj-mcp/order-detail?t=${Date.now()}`;
+        // @note 新增(第5次提交): 通过 structuredContent 把最新订单详情数据推送给 iframe，
+        // 解决 ChatGPT 缓存 HTML 后 window.__INITIAL_DATA__ 不更新的问题。
+        const odData = getOrderDetailCache();
         return {
           content: [{ type: 'text', text: `✅ 订单详情界面已打开 / Order detail UI opened. orderId: ${showOdId}` }],
-          _meta: { ui: { resourceUri: odUri } },
+          structuredContent: (odData ?? {}) as Record<string, unknown>,
+          _meta: { ui: { resourceUri: ORDER_DETAIL_UI_URI } },
         };
       }
 

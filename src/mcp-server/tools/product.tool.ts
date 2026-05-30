@@ -17,7 +17,7 @@ import { ensureAccessToken, getAccessToken } from '../../auth/session.js';
 import { setTokenGetter } from '../../api-client/http-client.js';
 import { getEnvConfig } from '../../config/env.js';
 import { getProductUrl } from '../../utils/product-href.js';
-import { setProductListCache, setProductDetailCache, hasProductDetailCache } from '../resources/index.js';
+import { setProductListCache, getProductListCache, setProductDetailCache, getProductDetailCache, hasProductDetailCache } from '../resources/index.js';
 
 // 注入 token getter (同步获取缓存的 token)
 setTokenGetter(() => getAccessToken());
@@ -582,18 +582,21 @@ export function getProductTools(): Tool[] {
     // 否则 MCP 客户端会在工具调用前就预渲染 UI（显示旧缓存数据），
     // 且同一个数据工具 + 展示工具会同时触发 UI 渲染导致重复显示两次。
     if (tool.name === 'show_product_list') {
+      // @note 修改(第4次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
+      // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: `${PRODUCT_LIST_UI_URI}?t=${ts}_${seq}` } },
+        _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } },
       };
     }
     if (tool.name === 'show_product_detail') {
-      const pid = lastProductDetailPid;
+      // @note 修改(第5次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
+      // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: `${PRODUCT_DETAIL_UI_URI}${pid ? '?pid=' + encodeURIComponent(pid) + '&' : '?'}t=${ts}_${seq}` } },
+        _meta: { ui: { resourceUri: PRODUCT_DETAIL_UI_URI } },
       };
     }
     // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
@@ -601,8 +604,12 @@ export function getProductTools(): Tool[] {
   });
 }
 
-/** 工具返回类型：支持 text/resource content + _meta */
-type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; _meta?: Record<string, unknown> };
+/**
+ * 工具返回类型：支持 text/resource content + _meta + structuredContent
+ * @note 新增(第4次提交): 加入 structuredContent，供 show_product_list 通过 MCP Apps 协议把
+ * 最新商品数据推送到 iframe，解决 ChatGPT 缓存 HTML 后 __INITIAL_DATA__ 不更新的问题。
+ */
+type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; structuredContent?: Record<string, unknown>; _meta?: Record<string, unknown> };
 
 export async function handleProductTool(
   name: string,
@@ -631,10 +638,15 @@ export async function handleProductTool(
       case 'get_product_detail':
         return await handleGetProductDetail(args);
       case 'show_product_list': {
-        const plUri = `ui://cj-mcp/product-list?t=${Date.now()}`;
+        // @note 新增(第4次提交): 通过 structuredContent 把最新商品数据推送给 iframe，
+        // 解决 ChatGPT 缓存 HTML 后 window.__INITIAL_DATA__ 不更新的问题。
+        // ChatGPT 在工具调用后会通过 ui/notifications/tool-result 把 structuredContent
+        // 发给已完成 ui/initialize 握手的 iframe，UI 收到后重新渲染。
+        const listData = getProductListCache();
         return {
           content: [{ type: 'text', text: '✅ 商品列表界面已打开 / Product list UI opened.' }],
-          _meta: { ui: { resourceUri: plUri } },
+          structuredContent: (listData ?? {}) as Record<string, unknown>,
+          _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } },
         };
       }
       case 'show_product_detail': {
@@ -650,10 +662,13 @@ export async function handleProductTool(
         if (detailResult.isError) {
           return detailResult;
         }
-        const pdUri = `ui://cj-mcp/product-detail?t=${Date.now()}`;
+        // @note 新增(第5次提交): 通过 structuredContent 把最新商品详情数据推送给 iframe，
+        // 解决 ChatGPT 缓存 HTML 后 window.__INITIAL_DATA__ 不更新的问题。
+        const detailData = getProductDetailCache();
         return {
           content: [{ type: 'text', text: `✅ 商品详情界面已打开 / Product detail UI opened. pid: ${pid}` }],
-          _meta: { ui: { resourceUri: pdUri } },
+          structuredContent: (detailData ?? {}) as Record<string, unknown>,
+          _meta: { ui: { resourceUri: PRODUCT_DETAIL_UI_URI } },
         };
       }
       case 'query_cj_inventory':

@@ -39,6 +39,22 @@ vi.mock('../../src/api-client/rate-limiter', () => ({
 }));
 
 const mockRequest = vi.fn().mockResolvedValue({ code: 200, result: true, message: 'OK', data: { items: [] } });
+
+// @note 新增(第5次提交): Mock resources/index 以便控制 getOrderListCache / getOrderDetailCache
+const mockGetOrderListCache = vi.fn();
+const mockGetOrderDetailCache = vi.fn();
+vi.mock('../../src/mcp-server/resources/index', () => ({
+  setProductListCache: vi.fn(),
+  getProductListCache: vi.fn(),
+  setProductDetailCache: vi.fn(),
+  getProductDetailCache: vi.fn(),
+  hasProductDetailCache: vi.fn().mockReturnValue(false),
+  setOrderListCache: vi.fn(),
+  getOrderListCache: () => mockGetOrderListCache(),
+  setOrderDetailCache: vi.fn(),
+  getOrderDetailCache: () => mockGetOrderDetailCache(),
+}));
+
 vi.mock('../../src/api-client/http-client', () => ({
   httpClient: { request: (...args: unknown[]) => mockRequest(...args) },
   AuthExpiredError: class extends Error { name = 'AuthExpiredError'; },
@@ -89,6 +105,50 @@ describe('order.tool', () => {
       '/shopping/order/list',
       expect.objectContaining({ tier: 'read' })
     );
+  });
+
+  /**
+   * @note 新增(第5次提交): show_order_list 通过 structuredContent 把最新订单列表数据
+   * 推送到 iframe（MCP Apps ui/notifications/tool-result 协议），
+   * 解决 ChatGPT 缓存 HTML 后数据不更新的问题。
+   */
+  it('show_order_list 有缓存时 structuredContent 包含订单数据，resourceUri 为固定 URI', async () => {
+    const mockListData = { list: [{ orderId: 'O001', orderStatus: 'SHIPPED' }], total: 1, pageNum: 1, pageSize: 20 };
+    mockGetOrderListCache.mockReturnValue(mockListData);
+
+    const result = await handleOrderTool('show_order_list', {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual(mockListData);
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/order-list',  // 固定 URI，不含时间戳
+    });
+  });
+
+  it('show_order_list 无缓存时 structuredContent 为空对象，不报错', async () => {
+    mockGetOrderListCache.mockReturnValue(null);
+
+    const result = await handleOrderTool('show_order_list', {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({});
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/order-list',
+    });
+  });
+
+  it('show_order_detail 有缓存时 structuredContent 包含订单详情，resourceUri 为固定 URI', async () => {
+    const mockDetailData = { orderId: 'O001', orderStatus: 'DELIVERED', productList: [] };
+    mockGetOrderDetailCache.mockReturnValue(mockDetailData);
+    mockRequest.mockResolvedValue({ code: 200, result: true, data: mockDetailData });
+
+    const result = await handleOrderTool('show_order_detail', { orderId: 'O001' });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual(mockDetailData);
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/order-detail',  // 固定 URI，不含时间戳
+    });
   });
 });
 
