@@ -1,6 +1,7 @@
 /**
  * @fileoverview product.tool 单元测试
  * 重点验证 search_products 的 productUrl 注入逻辑（纠正75次）
+ * 以及 show_product_list 的 structuredContent 推送逻辑（第4次提交）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -45,6 +46,19 @@ vi.mock('../../src/api-client/http-client', () => ({
   AuthExpiredError: class extends Error { name = 'AuthExpiredError'; },
   isApiSuccess: (r: { result?: boolean; code: number }) => r.result === true || r.code === 200,
   setTokenGetter: vi.fn(),
+}));
+
+// Mock resources/index 以便控制 getProductListCache / getProductDetailCache 返回值
+const mockGetProductListCache = vi.fn();
+const mockGetProductDetailCache = vi.fn();
+vi.mock('../../src/mcp-server/resources/index', () => ({
+  setProductListCache: vi.fn(),
+  getProductListCache: () => mockGetProductListCache(),
+  setProductDetailCache: vi.fn(),
+  getProductDetailCache: () => mockGetProductDetailCache(),
+  hasProductDetailCache: vi.fn().mockReturnValue(false),
+  setOrderListCache: vi.fn(),
+  setOrderDetailCache: vi.fn(),
 }));
 
 import { handleProductTool, productTools } from '../../src/mcp-server/tools/product.tool';
@@ -121,5 +135,72 @@ describe('product.tool', () => {
 
     const result = await handleProductTool('search_products', { keyword: 'test' });
     expect(result.isError).toBe(true);
+  });
+
+  it('show_product_list 有缓存时 structuredContent 包含商品数据，且 _meta.ui.resourceUri 为固定 URI', async () => {
+    /**
+     * @note 新增(第4次提交): show_product_list 通过 structuredContent 把最新商品数据
+     * 推送到 iframe（MCP Apps ui/notifications/tool-result 协议），
+     * 解决 ChatGPT 缓存 HTML 后 __INITIAL_DATA__ 不更新的问题。
+     */
+    const mockListData = {
+      totalRecords: 2,
+      pageNumber: 1,
+      totalPages: 1,
+      content: [{ productList: [{ id: 'P001', nameEn: 'Mouse', sellPrice: '9.99' }] }],
+    };
+    mockGetProductListCache.mockReturnValue(mockListData);
+
+    const result = await handleProductTool('show_product_list', {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual(mockListData);
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/product-list',  // 固定 URI，不含时间戳
+    });
+  });
+
+  it('show_product_list 无缓存时 structuredContent 为空对象，不报错', async () => {
+    mockGetProductListCache.mockReturnValue(null);
+
+    const result = await handleProductTool('show_product_list', {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({});
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/product-list',
+    });
+  });
+
+  /**
+   * @note 新增(第5次提交): show_product_detail 通过 structuredContent 把最新商品详情数据
+   * 推送到 iframe（MCP Apps ui/notifications/tool-result 协议），
+   * 解决 ChatGPT 缓存 HTML 后 __INITIAL_DATA__ 不更新的问题。
+   */
+  it('show_product_detail 有缓存时 structuredContent 包含商品详情数据，resourceUri 为固定 URI', async () => {
+    const mockDetailData = { pid: 'P001', nameEn: 'Wireless Mouse', sellPrice: '12.99', variants: [] };
+    mockGetProductDetailCache.mockReturnValue(mockDetailData);
+    mockRequest.mockResolvedValue({ result: true, code: 200, data: mockDetailData });
+
+    const result = await handleProductTool('show_product_detail', { pid: 'P001' });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual(mockDetailData);
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/product-detail',  // 固定 URI，不含时间戳
+    });
+  });
+
+  it('show_product_detail 无缓存时 structuredContent 为空对象，不报错', async () => {
+    mockGetProductDetailCache.mockReturnValue(null);
+    mockRequest.mockResolvedValue({ result: true, code: 200, data: null });
+
+    const result = await handleProductTool('show_product_detail', { pid: 'P002' });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({});
+    expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
+      resourceUri: 'ui://cj-mcp/product-detail',
+    });
   });
 });

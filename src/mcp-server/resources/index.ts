@@ -80,8 +80,26 @@ export function setProductListCache(data: unknown): void {
   cachedProductListData = data;
 }
 
+/**
+ * @note 新增(第4次提交): 供 show_product_list 工具读取当前缓存数据，
+ * 注入到 structuredContent，通过 MCP Apps ui/notifications/tool-result 协议
+ * 把最新商品数据推送到 iframe，解决 ChatGPT 缓存 HTML 后数据不更新的问题。
+ */
+export function getProductListCache(): unknown {
+  return cachedProductListData;
+}
+
 export function setProductDetailCache(data: unknown): void {
   cachedProductDetailData = data;
+}
+
+/**
+ * @note 新增(第5次提交): 供 show_product_detail 读取当前缓存数据，
+ * 注入到 structuredContent，通过 MCP Apps ui/notifications/tool-result 协议
+ * 把最新商品详情数据推送到 iframe，解决 ChatGPT 缓存 HTML 后数据不更新的问题。
+ */
+export function getProductDetailCache(): unknown {
+  return cachedProductDetailData;
 }
 
 export function hasProductDetailCache(): boolean {
@@ -92,8 +110,26 @@ export function setOrderListCache(data: unknown): void {
   cachedOrderListData = data;
 }
 
+/**
+ * @note 新增(第5次提交): 供 show_order_list 读取当前缓存数据，
+ * 注入到 structuredContent，通过 MCP Apps ui/notifications/tool-result 协议
+ * 把最新订单列表数据推送到 iframe，解决 ChatGPT 缓存 HTML 后数据不更新的问题。
+ */
+export function getOrderListCache(): unknown {
+  return cachedOrderListData;
+}
+
 export function setOrderDetailCache(data: unknown): void {
   cachedOrderDetailData = data;
+}
+
+/**
+ * @note 新增(第5次提交): 供 show_order_detail 读取当前缓存数据，
+ * 注入到 structuredContent，通过 MCP Apps ui/notifications/tool-result 协议
+ * 把最新订单详情数据推送到 iframe，解决 ChatGPT 缓存 HTML 后数据不更新的问题。
+ */
+export function getOrderDetailCache(): unknown {
+  return cachedOrderDetailData;
 }
 
 const resources: Resource[] = [
