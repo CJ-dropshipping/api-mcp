@@ -265,6 +265,54 @@ export const orderTools: Tool[] = [
     },
   },
   {
+    name: 'get_order_logistics_options',
+    description:
+      'Read the authoritative logistics rows currently offered for modification on one exact CJ order via the official ' +
+      'GET /shopping/order/getOrderLogisticsInfo endpoint. Read-only; never changes, creates, deletes or pays an order. ' +
+      'Use the returned row id and logisticsName unchanged if a later update is explicitly authorized.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        orderCode: {
+          type: 'string',
+          minLength: 1,
+          description: 'Exact CJ order code, for example DP2608231826390664200',
+        },
+      },
+      required: ['orderCode'],
+    },
+  },
+  {
+    name: 'update_unpaid_order_logistics',
+    description:
+      '⚠️ Update only the logistics route of one exact unpaid, still-modifiable CJ order via the official ' +
+      'POST /shopping/order/updateLogistics endpoint. Requires id, orderCode and logisticsName copied from a fresh ' +
+      'get_order_logistics_options result. The tool fixes from=1 for the complete selected order. It never pays, creates, deletes or fulfills anything.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          oneOf: [
+            { type: 'string', minLength: 1 },
+            { type: 'number' },
+          ],
+          description: 'Exact route/order row id returned by get_order_logistics_options',
+        },
+        orderCode: {
+          type: 'string',
+          minLength: 1,
+          description: 'Exact unpaid CJ order code returned by the fresh logistics read',
+        },
+        logisticsName: {
+          type: 'string',
+          minLength: 1,
+          description: 'Exact selected logisticsName returned by the fresh logistics read',
+        },
+      },
+      required: ['id', 'orderCode', 'logisticsName'],
+    },
+  },
+  {
     name: 'get_order_detail',
     description:
       '查询CJ单个订单的完整详情，包括订单状态、收货地址、商品清单、物流信息、金额明细等。\n' +
@@ -455,6 +503,7 @@ const ORDER_DETAIL_UI_URI = 'ui://cj-mcp/order-detail';
 const READ_ONLY_ORDER_TOOLS = new Set([
   'get_order_list', 'get_pay_order_list', 'get_order_detail',
   'get_account_balance', 'get_merge_progress', 'query_cogs',
+  'get_order_logistics_options',
 ]);
 
 export function getOrderTools(): Tool[] {
@@ -819,6 +868,46 @@ export async function handleOrderTool(
           status: 'UNPAID',
         }, 'read');
 
+      case 'get_order_logistics_options': {
+        const orderCode = exactStringArg(args.orderCode);
+        if (orderCode === null) {
+          return { content: [{ type: 'text', text: 'orderCode must be an exact non-empty string' }], isError: true };
+        }
+        const response = await httpClient.request(ENDPOINTS.shopping.getOrderLogisticsInfo, {
+          method: 'GET',
+          params: { orderCode },
+          tier: 'read',
+        });
+        if (!isApiSuccess(response)) {
+          return { content: [{ type: 'text', text: `Request failed [${response.code}]: ${response.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+      }
+
+      case 'update_unpaid_order_logistics': {
+        const id = exactIdArg(args.id);
+        if (id === null) {
+          return { content: [{ type: 'text', text: 'id must be an exact non-empty string or finite number' }], isError: true };
+        }
+        const orderCode = exactStringArg(args.orderCode);
+        if (orderCode === null) {
+          return { content: [{ type: 'text', text: 'orderCode must be an exact non-empty string' }], isError: true };
+        }
+        const logisticsName = exactStringArg(args.logisticsName);
+        if (logisticsName === null) {
+          return { content: [{ type: 'text', text: 'logisticsName must be an exact non-empty string' }], isError: true };
+        }
+        const response = await httpClient.request(ENDPOINTS.shopping.updateLogistics, {
+          method: 'POST',
+          body: { id, orderCode, logisticsName, from: 1 },
+          tier: 'write',
+        });
+        if (!isApiSuccess(response)) {
+          return { content: [{ type: 'text', text: `Request failed [${response.code}]: ${response.message}` }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }] };
+      }
+
       case 'get_order_list': {
         /**
          * @note 新增(41次): 解决"查询历史订单/最近购买"等用户意图无法匹配工具的问题。
@@ -1128,6 +1217,15 @@ export async function handleOrderTool(
     const msg = error instanceof Error ? error.message : String(error);
     return { content: [{ type: 'text', text: `Error: ${msg}` }], isError: true };
   }
+}
+
+function exactStringArg(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value ? value : null;
+}
+
+function exactIdArg(value: unknown): string | number | null {
+  if (exactStringArg(value) !== null) return value as string;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 async function callApi(

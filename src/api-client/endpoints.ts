@@ -53,6 +53,8 @@ export const ENDPOINTS = {
     mergeOrderSubmitResult: '/shopping/mergeOrder/submitResult',
     listOrder: '/shopping/order/list',
     getOrderDetail: '/shopping/order/getOrderDetail',
+    getOrderLogisticsInfo: '/shopping/order/getOrderLogisticsInfo',
+    updateLogistics: '/shopping/order/updateLogistics',
     getBalance: '/shopping/pay/getBalance',
     payBalance: '/shopping/pay/payBalance',
     payBalanceV2: '/shopping/pay/payBalanceV2',

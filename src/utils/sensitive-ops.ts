@@ -14,6 +14,7 @@ const SENSITIVE_TOOLS = new Set([
   'submit_order_to_cart', // 从 orderId 继续：加购→确认→生成支付单
   'confirm_cart_and_pay', // 从购物车内 orderId 继续：确认→生成支付单
   'generate_payment_link', // 从 shipmentsId 生成支付单
+  'update_unpaid_order_logistics', // 修改未付款订单的物流路线（不付款、不建单）
   'add_to_cart',        // 加入购物车
   'merge_orders',       // 合单 (不可逆)
   'create_dispute',     // 发起纠纷
@@ -46,6 +47,7 @@ export function getConfirmationPrompt(toolName: string, args: Record<string, unk
     submit_order_to_cart: '🛒 即将执行：加购物车→确认购物车→生成支付单 / About to: addCart → addCartConfirm → generatePayment',
     confirm_cart_and_pay: '🛒 即将执行：确认购物车→生成支付单 / About to: addCartConfirm → generatePayment',
     generate_payment_link: '💳 即将从 shipmentsId 生成支付单（涉及资金）/ About to generate payment order from shipmentsId',
+    update_unpaid_order_logistics: '📦 即将修改一笔未付款 CJ 订单的物流路线（不付款、不建单）/ About to update logistics on one unpaid CJ order (no payment or order creation)',
     add_to_cart: '🛒 即将添加商品到购物车 / About to add item to cart',
     merge_orders: '📦 即将执行合单操作（不可撤销）/ About to merge orders (irreversible)',
     create_dispute: '⚠️ 即将发起纠纷 / About to create a dispute',
