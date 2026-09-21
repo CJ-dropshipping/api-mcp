@@ -18432,6 +18432,19 @@ async function handleResourceRead(uri) {
   throw new Error(`Unknown resource: ${uri}`);
 }
 
+// src/mcp-server/tools/ui-contract.ts
+var MCP_UI_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: true
+};
+function buildUiToolMeta(resourceUri) {
+  return {
+    ui: { resourceUri },
+    // ChatGPT compatibility alias for the standard MCP Apps resource URI.
+    "openai/outputTemplate": resourceUri
+  };
+}
+
 // src/mcp-server/tools/product.tool.ts
 setTokenGetter(() => getAccessToken());
 var productTools = [
@@ -18822,11 +18835,8 @@ var productTools = [
       },
       required: []
     },
-    _meta: {
-      ui: {
-        resourceUri: "ui://cj-mcp/product-list"
-      }
-    }
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
+    _meta: buildUiToolMeta("ui://cj-mcp/product-list")
   },
   {
     name: "show_product_detail",
@@ -18841,11 +18851,8 @@ var productTools = [
       },
       required: ["pid"]
     },
-    _meta: {
-      ui: {
-        resourceUri: "ui://cj-mcp/product-detail"
-      }
-    }
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
+    _meta: buildUiToolMeta("ui://cj-mcp/product-detail")
   }
 ];
 var PRODUCT_LIST_UI_URI = "ui://cj-mcp/product-list";
@@ -18874,14 +18881,14 @@ function getProductTools() {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } }
+        _meta: buildUiToolMeta(PRODUCT_LIST_UI_URI)
       };
     }
     if (tool.name === "show_product_detail") {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: PRODUCT_DETAIL_UI_URI } }
+        _meta: buildUiToolMeta(PRODUCT_DETAIL_UI_URI)
       };
     }
     return { ...tool, annotations };
@@ -20039,7 +20046,8 @@ var orderTools = [
       type: "object",
       properties: {},
       required: []
-    }
+    },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA
   },
   {
     name: "show_order_detail",
@@ -20050,7 +20058,8 @@ var orderTools = [
         orderId: { type: "string", description: "\u8BA2\u5355ID\uFF08\u5FC5\u586B\uFF09/ Order ID (required)" }
       },
       required: ["orderId"]
-    }
+    },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA
   }
 ];
 var orderListUriSeq = 0;
@@ -20070,10 +20079,10 @@ function getOrderTools() {
   return orderTools.map((tool) => {
     const annotations = READ_ONLY_ORDER_TOOLS.has(tool.name) ? { readOnlyHint: true } : void 0;
     if (tool.name === "show_order_list") {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } } };
+      return { ...tool, annotations, _meta: buildUiToolMeta(ORDER_LIST_UI_URI) };
     }
     if (tool.name === "show_order_detail") {
-      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_DETAIL_UI_URI } } };
+      return { ...tool, annotations, _meta: buildUiToolMeta(ORDER_DETAIL_UI_URI) };
     }
     return { ...tool, annotations };
   });
@@ -21769,13 +21778,79 @@ function classifyMcpPath(urlPath) {
   return void 0;
 }
 
+// src/mcp-server/transport-config.ts
+var MCP_TRANSPORT_OPTIONS = {
+  sessionIdGenerator: void 0,
+  enableJsonResponse: true
+};
+var MCP_CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Accept",
+  "MCP-Protocol-Version",
+  "mcp-session-id",
+  "Last-Event-ID"
+].join(", ");
+
+// package.json
+var package_default = {
+  name: "cj-mcp-app",
+  version: "1.1.0",
+  description: "CJ Dropshipping MCP Server with AI-driven operations",
+  main: "dist/mcp-server/index.cjs",
+  author: "\u4E1C\u54B8",
+  license: "PRIVATE",
+  private: true,
+  type: "module",
+  scripts: {
+    dev: "tsx src/mcp-server/index.ts",
+    build: "node esbuild.config.js",
+    test: "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clear-token": `node -e "const f=require('path').join(require('os').homedir(),'.cj-mcp-token');try{require('fs').unlinkSync(f);console.log('\u2705 Token cleared: '+f);}catch(e){console.log('\u2139\uFE0F  No token file found: '+f);}"`,
+    "show-token-path": `node -e "console.log('Token file: '+require('path').join(require('os').homedir(),'.cj-mcp-token'));"`,
+    "gen:cert": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj '/CN=dongxian.com' -addext 'subjectAltName=DNS:dongxian.com,DNS:localhost,IP:127.0.0.1' && echo '\u2705 \u8BC1\u4E66\u5DF2\u751F\u6210\u5230 certs/ \u76EE\u5F55\uFF0CCN=dongxian.com\uFF0C\u6709\u6548\u671F 365 \u5929'",
+    "start:http": "CJ_TRANSPORT=http CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "start:https": "CJ_TRANSPORT=https CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "start:production": "CJ_TRANSPORT=http CJ_ENV=production CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "debug:http": "bash script/debug-http.sh",
+    "debug:http:log": "CJ_LOG_FILE=true CJ_ENV=test CJ_LOG_LEVEL=debug bash script/debug-http.sh"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    axios: "^1.7.9",
+    zod: "^3.24.2"
+  },
+  devDependencies: {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.1.0",
+    esbuild: "^0.25.0",
+    tsx: "^4.19.0",
+    typescript: "^5.7.0",
+    vitest: "^3.1.0"
+  },
+  engines: {
+    node: ">=20.0.0"
+  }
+};
+
 // src/mcp-server/index.ts
 registerTools();
 registerResources();
 function createMCPServer() {
   const mcpServer = new Server(
-    { name: "cj-dropshipping-mcp", version: "0.2.0" },
-    { capabilities: { tools: {}, resources: {} } }
+    { name: "cj-dropshipping-mcp", version: package_default.version },
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+        extensions: {
+          "io.modelcontextprotocol/ui": {
+            mimeTypes: ["text/html;profile=mcp-app"]
+          }
+        }
+      }
+    }
   );
   mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: getToolsList()
@@ -21800,7 +21875,7 @@ async function main() {
     const requestHandler = async (req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
+      res.setHeader("Access-Control-Allow-Headers", MCP_CORS_ALLOWED_HEADERS);
       if (req.method === "OPTIONS") {
         res.writeHead(204);
         res.end();
@@ -21826,15 +21901,15 @@ async function main() {
           return clientRequestStorage.run(clientReqCtx, runInner);
         };
         const mcpServer = createMCPServer();
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: void 0
-        });
+        const transport = new StreamableHTTPServerTransport(MCP_TRANSPORT_OPTIONS);
         await mcpServer.connect(transport);
-        if (req.method === "GET") {
+        if (req.method !== "POST") {
           const authTag = urlDirectToken ? `directToken(${urlDirectToken.userId})` : "none";
-          logger.raw(`[MCP-REQ] ${(/* @__PURE__ */ new Date()).toISOString()} | GET(SSE) | auth=${authTag}`);
-          const handleGet = () => transport.handleRequest(req, res, void 0);
-          await runWithContext(handleGet);
+          if (req.method === "GET") {
+            logger.raw(`[MCP-REQ] ${(/* @__PURE__ */ new Date()).toISOString()} | GET(SSE) | auth=${authTag}`);
+          }
+          const handleRequest = () => transport.handleRequest(req, res, void 0);
+          await runWithContext(handleRequest);
         } else {
           const chunks = [];
           for await (const chunk of req) {

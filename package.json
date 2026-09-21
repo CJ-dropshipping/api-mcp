@@ -1,6 +1,6 @@
 {
   "name": "cj-mcp-app",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "CJ Dropshipping MCP Server with AI-driven operations",
   "main": "dist/mcp-server/index.cjs",
   "author": "东咸",

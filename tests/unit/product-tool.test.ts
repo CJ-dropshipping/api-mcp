@@ -61,7 +61,7 @@ vi.mock('../../src/mcp-server/resources/index', () => ({
   setOrderDetailCache: vi.fn(),
 }));
 
-import { handleProductTool, productTools } from '../../src/mcp-server/tools/product.tool';
+import { getProductTools, handleProductTool, productTools } from '../../src/mcp-server/tools/product.tool';
 
 describe('product.tool', () => {
   beforeEach(() => mockRequest.mockClear());
@@ -81,6 +81,21 @@ describe('product.tool', () => {
     expect(productTools.map(t => t.name)).toContain('disconnect_product');
     expect(productTools.map(t => t.name)).toContain('show_product_list');
     expect(productTools.map(t => t.name)).toContain('show_product_detail');
+  });
+
+  it('UI 展示工具声明结构化输出 schema 和 ChatGPT outputTemplate', () => {
+    const uiTools = getProductTools().filter(t =>
+      t.name === 'show_product_list' || t.name === 'show_product_detail'
+    );
+
+    expect(uiTools).toHaveLength(2);
+    for (const tool of uiTools) {
+      const uiMeta = (tool._meta as Record<string, unknown>)?.ui as Record<string, unknown>;
+      expect(tool.outputSchema).toEqual({ type: 'object', additionalProperties: true });
+      expect(tool._meta).toMatchObject({
+        'openai/outputTemplate': uiMeta.resourceUri,
+      });
+    }
   });
 
   it('search_products 为 content[].productList[] 中的每个商品注入 productUrl', async () => {

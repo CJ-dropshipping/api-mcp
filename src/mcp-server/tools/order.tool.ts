@@ -11,6 +11,7 @@ import { getEnvConfig } from '../../config/env.js';
 import { logger, isDebugMode } from '../../utils/logger.js';
 import { setOrderListCache, setOrderDetailCache, getOrderListCache, getOrderDetailCache } from '../resources/index.js';
 import { buildClientRequestHeaders } from '../../utils/client-request-context.js';
+import { MCP_UI_OUTPUT_SCHEMA, buildUiToolMeta } from './ui-contract.js';
 
 export const orderTools: Tool[] = [
   {
@@ -425,6 +426,7 @@ export const orderTools: Tool[] = [
       properties: {},
       required: [],
     },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
   },
   {
     name: 'show_order_detail',
@@ -440,6 +442,7 @@ export const orderTools: Tool[] = [
       },
       required: ['orderId'],
     },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
   },
 ];
 
@@ -469,12 +472,12 @@ export function getOrderTools(): Tool[] {
     if (tool.name === 'show_order_list') {
       // @note 修改(第5次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
       // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
-      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_LIST_UI_URI } } };
+      return { ...tool, annotations, _meta: buildUiToolMeta(ORDER_LIST_UI_URI) };
     }
     if (tool.name === 'show_order_detail') {
       // @note 修改(第5次提交): 使用固定 URI（不加时间戳），ChatGPT 只需读取一次 HTML，
       // 后续通过 ui/notifications/tool-result 协议把数据推送到 iframe。
-      return { ...tool, annotations, _meta: { ui: { resourceUri: ORDER_DETAIL_UI_URI } } };
+      return { ...tool, annotations, _meta: buildUiToolMeta(ORDER_DETAIL_UI_URI) };
     }
     // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
     return { ...tool, annotations };
