@@ -29,6 +29,7 @@ import { registerResources, handleResourceRead, getResourcesList } from './resou
 import { directTokenStorage } from '../auth/api-key-context.js';
 import { classifyMcpPath } from './url-parser.js';
 import { clientRequestStorage, extractClientRequestContext } from '../utils/client-request-context.js';
+import { MCP_CORS_ALLOWED_HEADERS, MCP_TRANSPORT_OPTIONS } from './transport-config.js';
 
 // 工具/资源注册（模块级，只执行一次）
 registerTools();
@@ -40,7 +41,17 @@ registerResources();
 function createMCPServer(): Server {
   const mcpServer = new Server(
     { name: 'cj-dropshipping-mcp', version: '0.2.0' },
-    { capabilities: { tools: {}, resources: {} } }
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+        extensions: {
+          'io.modelcontextprotocol/ui': {
+            mimeTypes: ['text/html;profile=mcp-app'],
+          },
+        },
+      },
+    }
   );
 
   mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -88,7 +99,7 @@ async function main() {
       // CORS 支持（允许 ChatGPT Web 跨域请求）
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
+      res.setHeader('Access-Control-Allow-Headers', MCP_CORS_ALLOWED_HEADERS);
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -153,21 +164,21 @@ async function main() {
          *   若改有状态：SSE 长连接+后续 POST 必须命中同一 Pod（Redis 存不了活的 transport），
          *     必须开 sticky 且重启丢会话，与多 Pod 目标冲突，故不采用。
          */
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-        });
+        const transport = new StreamableHTTPServerTransport(MCP_TRANSPORT_OPTIONS);
         await mcpServer.connect(transport);
 
         /**
          * GET 请求是 SSE 事件流建立，无 body，直接处理。
          * POST 请求是 JSON-RPC 调用，需要读取并解析 body。
          */
-        if (req.method === 'GET') {
+        if (req.method !== 'POST') {
           const authTag = urlDirectToken ? `directToken(${urlDirectToken.userId})` : 'none';
-          logger.raw(`[MCP-REQ] ${new Date().toISOString()} | GET(SSE) | auth=${authTag}`);
+          if (req.method === 'GET') {
+            logger.raw(`[MCP-REQ] ${new Date().toISOString()} | GET(SSE) | auth=${authTag}`);
+          }
 
-          const handleGet = () => transport.handleRequest(req, res, undefined);
-          await runWithContext(handleGet);
+          const handleRequest = () => transport.handleRequest(req, res, undefined);
+          await runWithContext(handleRequest);
         } else {
           // 读取请求 body
           const chunks: Buffer[] = [];

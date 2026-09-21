@@ -88,7 +88,7 @@ macOS 示例：
 ### 方式二：ChatGPT（远程 HTTP 模式）
 
 1. 获取 CJ API Key → 获取 Access Token
-2. 在 ChatGPT 设置中创建 MCP 应用，填入 URL：`https://developers.cjdropshipping.cn/mcp/YOUR_ACCESS_TOKEN`
+2. 在 ChatGPT 设置中创建 MCP 应用，填入直连 Token URL：`https://developers.cjdropshipping.cn/mcp/API@<userId>@CJ:<accessToken>`
 
 详见 [完整接入文档](https://developers.cjdropshipping.com/zh/api/api2/mcp.html)。
 
@@ -171,4 +171,3 @@ npm run clear-token
 - [MCP Integration Guide (English)](https://developers.cjdropshipping.com/en/api/api2/mcp.html)
 - [CJ API 文档](https://developers.cjdropshipping.com/)
 - [MCP 协议规范](https://modelcontextprotocol.io/)
-

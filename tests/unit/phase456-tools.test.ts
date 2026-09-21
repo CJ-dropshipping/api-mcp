@@ -63,7 +63,7 @@ vi.mock('../../src/api-client/http-client', () => ({
   setTokenGetter: vi.fn(),
 }));
 
-import { handleOrderTool, orderTools } from '../../src/mcp-server/tools/order.tool';
+import { handleOrderTool, orderTools, getOrderTools } from '../../src/mcp-server/tools/order.tool';
 import { handleDisputeTool, disputeTools } from '../../src/mcp-server/tools/dispute.tool';
 import { handleShopTool, shopTools } from '../../src/mcp-server/tools/shop.tool';
 import { handleStockTool, stockTools } from '../../src/mcp-server/tools/stock.tool';
@@ -149,6 +149,21 @@ describe('order.tool', () => {
     expect((result._meta as Record<string, unknown>)?.ui).toMatchObject({
       resourceUri: 'ui://cj-mcp/order-detail',  // 固定 URI，不含时间戳
     });
+  });
+
+  it('订单 UI 展示工具声明结构化输出 schema 和 ChatGPT outputTemplate', () => {
+    const uiTools = getOrderTools().filter(t =>
+      t.name === 'show_order_list' || t.name === 'show_order_detail'
+    );
+
+    expect(uiTools).toHaveLength(2);
+    for (const tool of uiTools) {
+      const uiMeta = (tool._meta as Record<string, unknown>)?.ui as Record<string, unknown>;
+      expect(tool.outputSchema).toEqual({ type: 'object', additionalProperties: true });
+      expect(tool._meta).toMatchObject({
+        'openai/outputTemplate': uiMeta.resourceUri,
+      });
+    }
   });
 });
 

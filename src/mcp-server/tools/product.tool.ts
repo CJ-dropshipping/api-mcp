@@ -18,6 +18,7 @@ import { setTokenGetter } from '../../api-client/http-client.js';
 import { getEnvConfig } from '../../config/env.js';
 import { getProductUrl } from '../../utils/product-href.js';
 import { setProductListCache, getProductListCache, setProductDetailCache, getProductDetailCache, hasProductDetailCache } from '../resources/index.js';
+import { MCP_UI_OUTPUT_SCHEMA, buildUiToolMeta } from './ui-contract.js';
 
 // 注入 token getter (同步获取缓存的 token)
 setTokenGetter(() => getAccessToken());
@@ -499,11 +500,8 @@ export const productTools: Tool[] = [
       },
       required: [],
     },
-    _meta: {
-      ui: {
-        resourceUri: 'ui://cj-mcp/product-list',
-      },
-    },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
+    _meta: buildUiToolMeta('ui://cj-mcp/product-list'),
   },
   {
     name: 'show_product_detail',
@@ -522,11 +520,8 @@ export const productTools: Tool[] = [
       },
       required: ['pid'],
     },
-    _meta: {
-      ui: {
-        resourceUri: 'ui://cj-mcp/product-detail',
-      },
-    },
+    outputSchema: MCP_UI_OUTPUT_SCHEMA,
+    _meta: buildUiToolMeta('ui://cj-mcp/product-detail'),
   },
 ];
 
@@ -570,7 +565,7 @@ export function getProductTools(): Tool[] {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: PRODUCT_LIST_UI_URI } },
+        _meta: buildUiToolMeta(PRODUCT_LIST_UI_URI),
       };
     }
     if (tool.name === 'show_product_detail') {
@@ -579,7 +574,7 @@ export function getProductTools(): Tool[] {
       return {
         ...tool,
         annotations,
-        _meta: { ui: { resourceUri: PRODUCT_DETAIL_UI_URI } },
+        _meta: buildUiToolMeta(PRODUCT_DETAIL_UI_URI),
       };
     }
     // 数据返回工具不注入 _meta.ui，仅标注 readOnlyHint
@@ -1123,4 +1118,3 @@ async function handleDisconnectProduct(args: Record<string, unknown>) {
   }
   return { content: [{ type: 'text', text: `✅ 商品连接已断开 / Product disconnected.\n${JSON.stringify(response.data, null, 2)}` }] };
 }
-

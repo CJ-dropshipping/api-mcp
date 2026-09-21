@@ -20,3 +20,6 @@ docs/
 
 # Claude Code 本地配置（项目级规则等）
 .claude/
+
+# it-kb / API 查询运行时缓存（本地生成，不提交）
+uploads/
