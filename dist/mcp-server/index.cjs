@@ -21791,12 +21791,55 @@ var MCP_CORS_ALLOWED_HEADERS = [
   "Last-Event-ID"
 ].join(", ");
 
+// package.json
+var package_default = {
+  name: "cj-mcp-app",
+  version: "1.1.0",
+  description: "CJ Dropshipping MCP Server with AI-driven operations",
+  main: "dist/mcp-server/index.cjs",
+  author: "\u4E1C\u54B8",
+  license: "PRIVATE",
+  private: true,
+  type: "module",
+  scripts: {
+    dev: "tsx src/mcp-server/index.ts",
+    build: "node esbuild.config.js",
+    test: "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clear-token": `node -e "const f=require('path').join(require('os').homedir(),'.cj-mcp-token');try{require('fs').unlinkSync(f);console.log('\u2705 Token cleared: '+f);}catch(e){console.log('\u2139\uFE0F  No token file found: '+f);}"`,
+    "show-token-path": `node -e "console.log('Token file: '+require('path').join(require('os').homedir(),'.cj-mcp-token'));"`,
+    "gen:cert": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj '/CN=dongxian.com' -addext 'subjectAltName=DNS:dongxian.com,DNS:localhost,IP:127.0.0.1' && echo '\u2705 \u8BC1\u4E66\u5DF2\u751F\u6210\u5230 certs/ \u76EE\u5F55\uFF0CCN=dongxian.com\uFF0C\u6709\u6548\u671F 365 \u5929'",
+    "start:http": "CJ_TRANSPORT=http CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "start:https": "CJ_TRANSPORT=https CJ_ENV=test CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "start:production": "CJ_TRANSPORT=http CJ_ENV=production CJ_HTTP_PORT=3009 node dist/mcp-server/index.cjs",
+    "debug:http": "bash script/debug-http.sh",
+    "debug:http:log": "CJ_LOG_FILE=true CJ_ENV=test CJ_LOG_LEVEL=debug bash script/debug-http.sh"
+  },
+  dependencies: {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    axios: "^1.7.9",
+    zod: "^3.24.2"
+  },
+  devDependencies: {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^3.1.0",
+    esbuild: "^0.25.0",
+    tsx: "^4.19.0",
+    typescript: "^5.7.0",
+    vitest: "^3.1.0"
+  },
+  engines: {
+    node: ">=20.0.0"
+  }
+};
+
 // src/mcp-server/index.ts
 registerTools();
 registerResources();
 function createMCPServer() {
   const mcpServer = new Server(
-    { name: "cj-dropshipping-mcp", version: "0.2.0" },
+    { name: "cj-dropshipping-mcp", version: package_default.version },
     {
       capabilities: {
         tools: {},

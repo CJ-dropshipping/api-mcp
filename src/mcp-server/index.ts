@@ -30,6 +30,9 @@ import { directTokenStorage } from '../auth/api-key-context.js';
 import { classifyMcpPath } from './url-parser.js';
 import { clientRequestStorage, extractClientRequestContext } from '../utils/client-request-context.js';
 import { MCP_CORS_ALLOWED_HEADERS, MCP_TRANSPORT_OPTIONS } from './transport-config.js';
+// 版本号单一来源：package.json（此前 serverInfo 手写 0.2.0 与 package.json 0.1.0 漂移）；
+// 发版时在组织仓库 main 上打 tag v<x.y.z>，与此处保持一致
+import pkg from '../../package.json' with { type: 'json' };
 
 // 工具/资源注册（模块级，只执行一次）
 registerTools();
@@ -40,7 +43,7 @@ registerResources();
  */
 function createMCPServer(): Server {
   const mcpServer = new Server(
-    { name: 'cj-dropshipping-mcp', version: '0.2.0' },
+    { name: 'cj-dropshipping-mcp', version: pkg.version },
     {
       capabilities: {
         tools: {},
